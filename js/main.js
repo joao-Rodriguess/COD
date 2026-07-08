@@ -14,11 +14,29 @@ const Game = {
     waveDelay: 0,
     player: null,
     maxWaveDelay: 5,
+    money: 0,
+
+    addMoney(amount) {
+        this.money += amount;
+        localStorage.setItem('cod_money', this.money);
+        if (typeof HUD !== 'undefined') HUD.updateMoney(this.money);
+    },
+
+    spendMoney(amount) {
+        if (this.money >= amount) {
+            this.money -= amount;
+            localStorage.setItem('cod_money', this.money);
+            if (typeof HUD !== 'undefined') HUD.updateMoney(this.money);
+            return true;
+        }
+        return false;
+    },
 
     init() {
         // Three.js setup
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+        this.scene.add(this.camera); // Add camera to scene so children like weapon models are rendered
         this.renderer = new THREE.WebGLRenderer({
             canvas: document.getElementById('game-canvas'),
             antialias: true,
@@ -47,6 +65,12 @@ const Game = {
         HUD.init();
 
         this.player = PlayerController;
+
+        const savedMoney = localStorage.getItem('cod_money');
+        if (savedMoney !== null) {
+            this.money = parseInt(savedMoney);
+            if (typeof HUD !== 'undefined') HUD.updateMoney(this.money);
+        }
 
         // Window resize
         window.addEventListener('resize', () => {
@@ -103,8 +127,16 @@ const Game = {
     _setupUI() {
         // Start button
         document.getElementById('btn-start').addEventListener('click', () => {
-            this.startGame();
+            this.showIntro();
         });
+
+        // Shop button
+        const btnShop = document.getElementById('btn-shop');
+        if (btnShop) {
+            btnShop.addEventListener('click', () => {
+                if (typeof Shop !== 'undefined') Shop.open();
+            });
+        }
 
         // Controls button
         document.getElementById('btn-controls').addEventListener('click', () => {
@@ -134,7 +166,82 @@ const Game = {
         });
     },
 
+    showIntro() {
+        document.getElementById('main-menu').style.display = 'none';
+        const intro = document.getElementById('intro-screen');
+        const textEl = document.getElementById('intro-text');
+        const skipEl = document.getElementById('intro-skip');
+        
+        intro.style.display = 'flex';
+        intro.style.opacity = '1';
+        
+        const storyLines = [
+            "Um soldado solitário...",
+            "Foi enviado para a zona de guerra...",
+            "Sua missão: sobreviver, recuperar recursos e eliminar a ameaça.",
+            "Mas o campo de batalha está cheio de perigos..."
+        ];
+        
+        let currentLine = 0;
+        let isSkipped = false;
+        let timeoutIds = [];
+
+        const finishIntro = () => {
+            if (isSkipped) return;
+            isSkipped = true;
+            timeoutIds.forEach(id => clearTimeout(id));
+            window.removeEventListener('keydown', skipHandler);
+            
+            intro.style.transition = 'opacity 1s ease';
+            intro.style.opacity = '0';
+            
+            setTimeout(() => {
+                intro.style.display = 'none';
+                this.startGame();
+            }, 1000);
+        };
+
+        const skipHandler = (e) => {
+            if (e.code === 'Space') {
+                finishIntro();
+            }
+        };
+
+        window.addEventListener('keydown', skipHandler);
+
+        const showNextLine = () => {
+            if (isSkipped) return;
+            if (currentLine >= storyLines.length) {
+                timeoutIds.push(setTimeout(finishIntro, 2000));
+                return;
+            }
+
+            textEl.style.opacity = '0';
+            
+            timeoutIds.push(setTimeout(() => {
+                if (isSkipped) return;
+                textEl.textContent = storyLines[currentLine];
+                textEl.style.opacity = '1';
+                
+                if (currentLine === 0) skipEl.style.display = 'block';
+                
+                currentLine++;
+                timeoutIds.push(setTimeout(showNextLine, 3000));
+            }, 1000));
+        };
+
+        showNextLine();
+    },
+
     startGame() {
+        const mapSelect = document.getElementById('map-select');
+        const skinSelect = document.getElementById('skin-select');
+        const theme = mapSelect ? mapSelect.value : 'urban';
+        const skin = skinSelect ? skinSelect.value : 'default';
+        
+        GameMap.applyTheme(theme);
+        WeaponSystem.applySkin(skin);
+
         document.getElementById('main-menu').style.display = 'none';
         document.getElementById('hud').style.display = 'block';
         document.getElementById('death-screen').style.display = 'none';

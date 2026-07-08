@@ -255,6 +255,30 @@ const PlayerController = {
                     this.nightVisionActive = !this.nightVisionActive;
                     this._toggleNightVision(this.nightVisionActive);
                     break;
+                case 'KeyE':
+                case 'KeyF':
+                    if (typeof GameMap !== 'undefined' && GameMap.chests) {
+                        for (const chest of GameMap.chests) {
+                            if (!chest.opened) {
+                                const dist = this.position.distanceTo(new THREE.Vector3(chest.x, this.position.y, chest.z));
+                                if (dist < 3.0) {
+                                    chest.opened = true;
+                                    chest.group.children[1].rotation.x = -Math.PI / 4;
+                                    chest.group.children[1].position.z -= 0.2;
+                                    chest.group.children[1].position.y += 0.2;
+                                    
+                                    if (typeof Game !== 'undefined') {
+                                        Game.addMoney(200);
+                                        if (typeof HUD !== 'undefined') HUD.addKillFeed('+$200');
+                                    }
+                                    
+                                    AudioManager.playReload();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    break;
                 case 'Escape':
                     if (Game.state === 'playing') Game.pause();
                     break;
@@ -281,7 +305,11 @@ const PlayerController = {
                 WeaponSystem.isFiring = true;
                 const hitInfo = WeaponSystem.tryFire();
                 if (hitInfo) {
-                    this._processHit(hitInfo);
+                    if (Array.isArray(hitInfo)) {
+                        hitInfo.forEach(h => this._processHit(h));
+                    } else {
+                        this._processHit(hitInfo);
+                    }
                 }
             }
             if (e.button === 2) { // Right click - ADS
@@ -420,8 +448,8 @@ const PlayerController = {
         direction.normalize();
 
         // Inclinação lateral da câmera baseada em movimento lateral
-        if (this.moveLeft) this.targetCameraRoll = 0.04;
-        if (this.moveRight) this.targetCameraRoll = -0.04;
+        if (this.isCrouching && this.moveLeft) this.targetCameraRoll = 0.04;
+        else if (this.isCrouching && this.moveRight) this.targetCameraRoll = -0.04;
 
         let speed = this.walkSpeed;
         const moveVec = new THREE.Vector3();
@@ -756,7 +784,25 @@ const PlayerController = {
         // Fogo automático contínuo
         if (WeaponSystem.isFiring && WeaponSystem.weapons[WeaponSystem.currentIndex].auto) {
             const hitInfo = WeaponSystem.tryFire();
-            if (hitInfo) this._processHit(hitInfo);
+            if (hitInfo) {
+                if (Array.isArray(hitInfo)) {
+                    hitInfo.forEach(h => this._processHit(h));
+                } else {
+                    this._processHit(hitInfo);
+                }
+            }
+        }
+
+        // Chest proximity
+        if (typeof GameMap !== 'undefined' && GameMap.chests && typeof HUD !== 'undefined' && HUD.showTooltip) {
+            let nearChest = false;
+            for (const chest of GameMap.chests) {
+                if (!chest.opened) {
+                    const dist = this.position.distanceTo(new THREE.Vector3(chest.x, this.position.y, chest.z));
+                    if (dist < 3.0) { nearChest = true; break; }
+                }
+            }
+            HUD.showTooltip(nearChest ? 'PRESSIONE E PARA ABRIR O BAÚ (+$200)' : '');
         }
     },
 

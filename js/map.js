@@ -7,13 +7,20 @@ const GameMap = {
     collisionBoxes: [],
     enemySpawnPoints: [],
     playerSpawn: new THREE.Vector3(0, 1.7, 0),
-    mapSize: 80,
+    mapSize: 300,
 
     init(scene) {
         this.scene = scene;
         this.collisionBoxes = [];
         this.enemySpawnPoints = [];
         this.ladders = [];
+        this.materials = {
+            ground: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95, metalness: 0.05 }),
+            sky: new THREE.MeshBasicMaterial({ color: 0x1a1a2e, side: THREE.BackSide }),
+            bldg1: this._mat(0x4a4a55),
+            bldg2: this._mat(0x555560),
+            bldg3: this._mat(0x3d3d48)
+        };
         this._createGround();
         this._createSkybox();
         this._createBuildings();
@@ -23,6 +30,34 @@ const GameMap = {
         this._createDetails();
         this._defineSpawnPoints();
         this._createLadders();
+        this._createChests();
+    },
+
+    applyTheme(theme) {
+        let groundColor, skyColor, fogColor, bldg1, bldg2, bldg3, fogDensity;
+        if (theme === 'desert') {
+            groundColor = 0xc2b280; skyColor = 0xffcc99; fogColor = 0xffcc99;
+            bldg1 = 0xd2c290; bldg2 = 0xb2a270; bldg3 = 0xc2b280;
+            fogDensity = 0.015; // Dust storm
+        } else if (theme === 'snow') {
+            groundColor = 0xddddff; skyColor = 0x99aadd; fogColor = 0xaabbdd;
+            bldg1 = 0x8899aa; bldg2 = 0x778899; bldg3 = 0x99aabb;
+            fogDensity = 0.02; // Blizzard
+        } else { // urban
+            groundColor = 0x3a3a3a; skyColor = 0x1a1a2e; fogColor = 0x1a1a2e;
+            bldg1 = 0x4a4a55; bldg2 = 0x555560; bldg3 = 0x3d3d48;
+            fogDensity = 0.01; // Dense urban fog
+        }
+        
+        if (this.scene.fog) {
+            this.scene.fog.color.setHex(fogColor);
+            this.scene.fog.density = fogDensity;
+        }
+        this.materials.ground.color.setHex(groundColor);
+        this.materials.sky.color.setHex(skyColor);
+        this.materials.bldg1.color.setHex(bldg1);
+        this.materials.bldg2.color.setHex(bldg2);
+        this.materials.bldg3.color.setHex(bldg3);
     },
 
     _mat(color, roughness = 0.8) {
@@ -50,12 +85,7 @@ const GameMap = {
     _createGround() {
         // Main ground
         const groundGeo = new THREE.PlaneGeometry(this.mapSize, this.mapSize, 20, 20);
-        const groundMat = new THREE.MeshStandardMaterial({
-            color: 0x3a3a3a,
-            roughness: 0.95,
-            metalness: 0.05
-        });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
+        const ground = new THREE.Mesh(groundGeo, this.materials.ground);
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         this.scene.add(ground);
@@ -86,11 +116,7 @@ const GameMap = {
 
     _createSkybox() {
         const skyGeo = new THREE.SphereGeometry(200, 32, 32);
-        const skyMat = new THREE.MeshBasicMaterial({
-            color: 0x1a1a2e,
-            side: THREE.BackSide
-        });
-        const sky = new THREE.Mesh(skyGeo, skyMat);
+        const sky = new THREE.Mesh(skyGeo, this.materials.sky);
         this.scene.add(sky);
 
         // Fog
@@ -98,31 +124,26 @@ const GameMap = {
     },
 
     _createBuildings() {
-        const bldgMat1 = this._mat(0x4a4a55);
-        const bldgMat2 = this._mat(0x555560);
-        const bldgMat3 = this._mat(0x3d3d48);
         const roofMat = this._mat(0x2a2a35);
 
-        const buildings = [
-            // Large buildings around edges
-            { w: 12, h: 8, d: 10, x: -25, z: -25 },
-            { w: 10, h: 10, d: 14, x: 28, z: -22 },
-            { w: 14, h: 7, d: 10, x: -20, z: 25 },
-            { w: 10, h: 12, d: 12, x: 25, z: 28 },
-            // Medium buildings
-            { w: 8, h: 6, d: 8, x: -15, z: 0 },
-            { w: 8, h: 5, d: 10, x: 18, z: 5 },
-            { w: 10, h: 7, d: 6, x: 5, z: -18 },
-            { w: 6, h: 5, d: 8, x: -8, z: 15 },
-            // Small structures
-            { w: 5, h: 4, d: 5, x: 10, z: 15 },
-            { w: 4, h: 3, d: 6, x: -30, z: 5 },
-            { w: 6, h: 4, d: 4, x: 30, z: -5 },
-            { w: 5, h: 5, d: 5, x: -5, z: -30 },
-        ];
+        const buildings = [];
+        
+        for (let i = 0; i < 150; i++) {
+            const w = 5 + Math.random() * 15;
+            const h = 4 + Math.random() * 15;
+            const d = 5 + Math.random() * 15;
+            
+            const x = (Math.random() - 0.5) * (this.mapSize - 20);
+            const z = (Math.random() - 0.5) * (this.mapSize - 20);
+            
+            // Keep center area clear for plaza/spawn
+            if (Math.abs(x) < 40 && Math.abs(z) < 40) continue;
+            
+            buildings.push({ w, h, d, x, z });
+        }
 
         buildings.forEach((b, i) => {
-            const mat = [bldgMat1, bldgMat2, bldgMat3][i % 3];
+            const mat = [this.materials.bldg1, this.materials.bldg2, this.materials.bldg3][i % 3];
             this._addBox(b.w, b.h, b.d, b.x, b.h / 2, b.z, mat);
 
             // Roof overhang
@@ -349,20 +370,17 @@ const GameMap = {
     _defineSpawnPoints() {
         this.playerSpawn = new THREE.Vector3(0, 1.7, 0);
 
-        this.enemySpawnPoints = [
-            new THREE.Vector3(-30, 1.7, -30),
-            new THREE.Vector3(30, 1.7, -30),
-            new THREE.Vector3(-30, 1.7, 30),
-            new THREE.Vector3(30, 1.7, 30),
-            new THREE.Vector3(-35, 1.7, 0),
-            new THREE.Vector3(35, 1.7, 0),
-            new THREE.Vector3(0, 1.7, -35),
-            new THREE.Vector3(0, 1.7, 35),
-            new THREE.Vector3(-20, 1.7, -20),
-            new THREE.Vector3(20, 1.7, 20),
-            new THREE.Vector3(-20, 1.7, 20),
-            new THREE.Vector3(20, 1.7, -20),
-        ];
+        this.enemySpawnPoints = [];
+        for (let i = 0; i < 30; i++) {
+            let x = (Math.random() - 0.5) * (this.mapSize - 20);
+            let z = (Math.random() - 0.5) * (this.mapSize - 20);
+            if (Math.abs(x) < 30 && Math.abs(z) < 30) {
+                // Afastar do centro
+                x += Math.sign(x) * 30;
+                z += Math.sign(z) * 30;
+            }
+            this.enemySpawnPoints.push(new THREE.Vector3(x, 1.7, z));
+        }
     },
 
     checkCollision(position, radius = 0.4) {
@@ -452,6 +470,53 @@ const GameMap = {
     getCollisionBoxes() { return this.collisionBoxes; },
     getSpawnPoints() { return this.enemySpawnPoints; },
     getPlayerSpawn() { return this.playerSpawn.clone(); },
+
+    // ============================
+    // CHESTS
+    // ============================
+    chests: [],
+    _createChests() {
+        this.chests = [];
+        const chestPositions = [];
+        
+        // Random chests across the expanded map
+        for (let i = 0; i < 20; i++) {
+            const x = (Math.random() - 0.5) * (this.mapSize - 10);
+            const z = (Math.random() - 0.5) * (this.mapSize - 10);
+            // Evitar nascer exatamente no centro
+            if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
+            chestPositions.push({ x, z });
+        }
+        
+        const chestMat = new THREE.MeshStandardMaterial({ color: 0x553311, roughness: 0.9 });
+        const lidMat = new THREE.MeshStandardMaterial({ color: 0x664422, roughness: 0.9 });
+        
+        chestPositions.forEach(p => {
+            const group = new THREE.Group();
+            
+            const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.0), chestMat);
+            base.position.y = 0.5;
+            base.castShadow = true;
+            group.add(base);
+            
+            const lid = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.0), lidMat);
+            lid.position.y = 1.1;
+            lid.castShadow = true;
+            group.add(lid);
+            
+            group.position.set(p.x, 0, p.z);
+            this.scene.add(group);
+            
+            this.collisionBoxes.push({
+                min: new THREE.Vector3(p.x - 0.75, 0, p.z - 0.5),
+                max: new THREE.Vector3(p.x + 0.75, 1.2, p.z + 0.5)
+            });
+            
+            this.chests.push({
+                x: p.x, z: p.z, group: group, opened: false
+            });
+        });
+    },
 
     // ============================
     // EXPLOSIVE BARRELS

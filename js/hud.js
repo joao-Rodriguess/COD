@@ -30,12 +30,24 @@ const HUD = {
             grenadeCount: document.getElementById('grenade-count'),
             nvIndicator: document.getElementById('nv-indicator'),
             weatherIndicator: document.getElementById('weather-indicator'),
+            tooltip: document.getElementById('tooltip'),
+            moneyDisplay: document.getElementById('money-display'),
+            shopMoneyDisplay: document.getElementById('shop-money-display')
         };
 
         // Minimap canvas
         const miniCanvas = document.getElementById('minimap-canvas');
         if (miniCanvas) {
             this.miniCtx = miniCanvas.getContext('2d');
+        }
+    },
+
+    updateMoney(amount) {
+        if (this.elements.moneyDisplay) {
+            this.elements.moneyDisplay.textContent = amount;
+        }
+        if (this.elements.shopMoneyDisplay) {
+            this.elements.shopMoneyDisplay.textContent = amount;
         }
     },
 
@@ -100,6 +112,9 @@ const HUD = {
             // Update weapon slots
             this.elements.weaponSlots.forEach((slot, i) => {
                 slot.classList.toggle('active', i === gameState.currentWeaponIndex);
+                if (typeof WeaponSystem !== 'undefined' && WeaponSystem.weapons[i]) {
+                    slot.style.display = WeaponSystem.weapons[i].unlocked ? 'block' : 'none';
+                }
             });
         }
 
@@ -357,5 +372,15 @@ const HUD = {
 
     show() {
         document.getElementById('hud').style.display = 'block';
+    },
+
+    showTooltip(text) {
+        if (!this.elements.tooltip) return;
+        if (text) {
+            this.elements.tooltip.textContent = text;
+            this.elements.tooltip.style.display = 'block';
+        } else {
+            this.elements.tooltip.style.display = 'none';
+        }
     }
 };

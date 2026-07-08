@@ -112,13 +112,7 @@ const EnemyManager = {
         this.waveNumber = waveNum;
         this.waveActive = true;
 
-        let count;
-        if (waveNum === 1) {
-            count = 1;
-        } else {
-            const baseCount = 4;
-            count = baseCount + Math.floor(waveNum * 2.5);
-        }
+        let count = waveNum;
         const spawnPoints = GameMap.getSpawnPoints();
 
         const types = ['soldier', 'soldier', 'soldier', 'rusher', 'sniper'];
@@ -621,6 +615,12 @@ const EnemyManager = {
     _killEnemy(enemy) {
         enemy.state = 'dead';
         this.killCount++;
+        
+        // Add money
+        if (typeof Game !== 'undefined') {
+            Game.addMoney(100);
+            if (typeof HUD !== 'undefined') HUD.addKillFeed('+ $100');
+        }
 
         // Kill streak
         const now = performance.now() / 1000;

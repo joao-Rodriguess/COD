@@ -28,9 +28,30 @@
                 <h1 class="menu-title">WARZONE</h1>
                 <h2 class="menu-subtitle">TACTICAL OPERATIONS</h2>
             </div>
+            <div class="menu-options" style="margin-bottom: 20px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                <div>
+                    <label style="color: var(--hud-green); font-family: var(--font-main); font-weight: bold; margin-right: 10px; letter-spacing: 2px;">MAPA:</label>
+                    <select id="map-select" style="padding: 8px 16px; background: rgba(0,0,0,0.5); color: white; border: 1px solid var(--hud-green); font-family: var(--font-title); font-size: 1rem; cursor: pointer;">
+                        <option value="urban">URBANO</option>
+                        <option value="desert">DESERTO</option>
+                        <option value="snow">NEVE</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color: var(--hud-green); font-family: var(--font-main); font-weight: bold; margin-right: 10px; letter-spacing: 2px;">SKIN DA ARMA:</label>
+                    <select id="skin-select" style="padding: 8px 16px; background: rgba(0,0,0,0.5); color: white; border: 1px solid var(--hud-green); font-family: var(--font-title); font-size: 1rem; cursor: pointer;">
+                        <option value="default">PADRÃO</option>
+                        <option value="gold">OURO</option>
+                        <option value="camo">CAMUFLAGEM</option>
+                    </select>
+                </div>
+            </div>
             <div class="menu-buttons">
                 <button class="menu-btn primary" id="btn-start">
                     <span class="btn-icon">▶</span> INICIAR COMBATE
+                </button>
+                <button class="menu-btn" id="btn-shop" style="background: rgba(0, 255, 136, 0.2); border-color: var(--hud-green);">
+                    <span class="btn-icon">🛒</span> LOJA DE ARMAS
                 </button>
                 <button class="menu-btn" id="btn-controls">
                     <span class="btn-icon">⌨</span> CONTROLES
@@ -60,6 +81,30 @@
                     <div class="control-item"><span class="key">N</span><span>Visão Noturna</span></div>
                 </div>
                 <button class="menu-btn" id="btn-close-controls">VOLTAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intro Screen -->
+    <div id="intro-screen" class="overlay" style="display:none;">
+        <div class="intro-content">
+            <p id="intro-text"></p>
+            <p id="intro-skip" class="pulse-text" style="display:none;">Pressione ESPAÇO para pular</p>
+        </div>
+    </div>
+
+    <!-- Shop Panel -->
+    <div id="shop-panel" class="overlay" style="display:none;">
+        <div class="shop-content">
+            <div class="shop-header">
+                <h2>LOJA TÁTICA</h2>
+                <div class="shop-money">SALDO: $<span id="shop-money-display">0</span></div>
+            </div>
+            <div class="shop-grid" id="shop-grid">
+                <!-- Shop items will be injected here via JS -->
+            </div>
+            <div class="shop-footer">
+                <button class="menu-btn primary" id="btn-close-shop">FECHAR LOJA</button>
             </div>
         </div>
     </div>
@@ -108,6 +153,22 @@
             </div>
         </div>
 
+
+
+        <!-- Money Display (Top Left, below score) -->
+        <div id="score-area">
+            <div class="score-label">SCORE</div>
+            <div class="score-value" id="score-value">0</div>
+            <div class="kills-info">
+                <span class="kills-label">KILLS:</span>
+                <span class="kills-value" id="kills-value">0</span>
+            </div>
+            <div class="money-info" style="margin-top: 10px;">
+                <span class="money-label" style="color: var(--hud-green); font-size: 1.2rem; font-weight: bold;">$:</span>
+                <span class="money-value" id="money-display" style="color: #fff; font-size: 1.2rem; font-weight: bold; text-shadow: 0 0 10px var(--hud-green);">0</span>
+            </div>
+        </div>
+
         <!-- Ammo Area (Bottom Right) -->
         <div id="ammo-area">
             <div class="weapon-icon" id="weapon-icon">🔫</div>
@@ -125,9 +186,15 @@
             <div class="weapon-slot active" data-slot="0"><span class="slot-num">1</span><span class="slot-name">M4A1</span></div>
             <div class="weapon-slot" data-slot="1"><span class="slot-num">2</span><span class="slot-name">MP5</span></div>
             <div class="weapon-slot" data-slot="2"><span class="slot-num">3</span><span class="slot-name">SNIPER</span></div>
-            <div class="weapon-slot" data-slot="3"><span class="slot-num">4</span><span class="slot-name">P226</span></div>
-            <div class="weapon-slot" data-slot="4"><span class="slot-num">5</span><span class="slot-name">FACA</span></div>
+            <div class="weapon-slot" data-slot="3"><span class="slot-num">4</span><span class="slot-name">SHOTGUN</span></div>
+            <div class="weapon-slot" data-slot="4"><span class="slot-num">5</span><span class="slot-name">LMG</span></div>
+            <div class="weapon-slot" data-slot="5"><span class="slot-num">6</span><span class="slot-name">BURST</span></div>
+            <div class="weapon-slot" data-slot="6"><span class="slot-num">7</span><span class="slot-name">P226</span></div>
+            <div class="weapon-slot" data-slot="7"><span class="slot-num">8</span><span class="slot-name">FACA</span></div>
         </div>
+
+        <!-- Tooltip -->
+        <div id="tooltip" style="position: absolute; top: 60%; left: 50%; transform: translateX(-50%); font-family: var(--font-title); font-size: 1.5rem; color: white; text-shadow: 0 0 10px black; display: none; z-index: 200;"></div>
 
         <!-- Minimap (Top Right) -->
         <div id="minimap-container">
@@ -258,6 +325,7 @@
     <script src="js/grenades.js?v=8"></script>
     <script src="js/weather.js?v=8"></script>
     <script src="js/hud.js?v=8"></script>
+    <script src="js/shop.js"></script>
     <script src="js/main.js?v=8"></script>
 </body>
 </html>

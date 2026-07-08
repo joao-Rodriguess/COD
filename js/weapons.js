@@ -28,9 +28,11 @@ const WeaponSystem = {
             {
                 name: 'M4A1',
                 type: 'ar',
+                unlocked: true,
+                price: 0,
                 damage: 28,
                 headshotMult: 2.5,
-                fireRate: 0.1,    // seconds between shots
+                fireRate: 0.1,
                 reloadTime: 2.2,
                 magSize: 30,
                 maxAmmo: 210,
@@ -43,12 +45,14 @@ const WeaponSystem = {
                 auto: true,
                 fireMode: 'AUTO',
                 model: null,
-                posDefault: new THREE.Vector3(0.25, -0.18, -0.45),
+                posDefault: new THREE.Vector3(0.18, -0.12, -0.35),
                 posADS: new THREE.Vector3(0, -0.14, -0.3),
             },
             {
                 name: 'MP5',
                 type: 'smg',
+                unlocked: false,
+                price: 400,
                 damage: 22,
                 headshotMult: 2,
                 fireRate: 0.07,
@@ -64,12 +68,14 @@ const WeaponSystem = {
                 auto: true,
                 fireMode: 'AUTO',
                 model: null,
-                posDefault: new THREE.Vector3(0.22, -0.17, -0.4),
+                posDefault: new THREE.Vector3(0.16, -0.12, -0.32),
                 posADS: new THREE.Vector3(0, -0.13, -0.28),
             },
             {
                 name: 'SNIPER',
                 type: 'sniper',
+                unlocked: false,
+                price: 1000,
                 damage: 95,
                 headshotMult: 3,
                 fireRate: 1.2,
@@ -85,12 +91,86 @@ const WeaponSystem = {
                 auto: false,
                 fireMode: 'BOLT',
                 model: null,
-                posDefault: new THREE.Vector3(0.28, -0.2, -0.5),
+                posDefault: new THREE.Vector3(0.20, -0.15, -0.4),
+                posADS: new THREE.Vector3(0, -0.14, -0.3),
+            },
+            {
+                name: 'SHOTGUN',
+                type: 'shotgun',
+                unlocked: false,
+                price: 600,
+                damage: 15, // per pellet
+                pellets: 8,
+                headshotMult: 1.5,
+                fireRate: 0.8,
+                reloadTime: 2.5,
+                magSize: 6,
+                maxAmmo: 36,
+                currentMag: 6,
+                reserveAmmo: 36,
+                recoil: 0.06,
+                spread: 0.08,
+                adsSpread: 0.05,
+                range: 20,
+                auto: false,
+                fireMode: 'PUMP',
+                model: null,
+                posDefault: new THREE.Vector3(0.18, -0.14, -0.35),
+                posADS: new THREE.Vector3(0, -0.14, -0.3),
+            },
+            {
+                name: 'LMG',
+                type: 'lmg',
+                unlocked: false,
+                price: 800,
+                damage: 32,
+                headshotMult: 2,
+                fireRate: 0.09,
+                reloadTime: 4.5,
+                magSize: 100,
+                maxAmmo: 300,
+                currentMag: 100,
+                reserveAmmo: 300,
+                recoil: 0.035,
+                spread: 0.03,
+                adsSpread: 0.01,
+                range: 100,
+                auto: true,
+                fireMode: 'AUTO',
+                model: null,
+                posDefault: new THREE.Vector3(0.22, -0.16, -0.38),
+                posADS: new THREE.Vector3(0, -0.15, -0.32),
+            },
+            {
+                name: 'BURST',
+                type: 'burst',
+                unlocked: false,
+                price: 700,
+                damage: 26,
+                headshotMult: 2.5,
+                fireRate: 0.4,
+                burstCount: 3,
+                burstDelay: 0.08,
+                reloadTime: 2.1,
+                magSize: 30,
+                maxAmmo: 210,
+                currentMag: 30,
+                reserveAmmo: 210,
+                recoil: 0.02,
+                spread: 0.01,
+                adsSpread: 0.002,
+                range: 90,
+                auto: false,
+                fireMode: 'BURST',
+                model: null,
+                posDefault: new THREE.Vector3(0.18, -0.12, -0.35),
                 posADS: new THREE.Vector3(0, -0.14, -0.3),
             },
             {
                 name: 'P226',
                 type: 'pistol',
+                unlocked: true,
+                price: 0,
                 damage: 35,
                 headshotMult: 2,
                 fireRate: 0.15,
@@ -106,12 +186,14 @@ const WeaponSystem = {
                 auto: false,
                 fireMode: 'SEMI',
                 model: null,
-                posDefault: new THREE.Vector3(0.2, -0.16, -0.35),
+                posDefault: new THREE.Vector3(0.15, -0.12, -0.3),
                 posADS: new THREE.Vector3(0, -0.12, -0.25),
             },
             {
                 name: 'FACA',
                 type: 'knife',
+                unlocked: true,
+                price: 0,
                 damage: 85,
                 headshotMult: 2,
                 fireRate: 0.6,
@@ -132,6 +214,16 @@ const WeaponSystem = {
             }
         ];
 
+        const savedUnlocks = localStorage.getItem('cod_weapons');
+        if (savedUnlocks) {
+            try {
+                const unlocked = JSON.parse(savedUnlocks);
+                this.weapons.forEach((w, i) => {
+                    if (unlocked[i]) w.unlocked = true;
+                });
+            } catch(e) {}
+        }
+
         this.weapons.forEach((w, i) => {
             w.model = this._createWeaponModel(w.type);
             w.model.visible = (i === 0);
@@ -143,6 +235,7 @@ const WeaponSystem = {
     _createWeaponModel(type) {
         const group = new THREE.Group();
         const darkMetal = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.4, metalness: 0.8 });
+        darkMetal.name = 'weaponBody';
         const lightMetal = new THREE.MeshStandardMaterial({ color: 0x3d3d42, roughness: 0.3, metalness: 0.7 });
         const gripMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9, metalness: 0.1 });
         const magMat = new THREE.MeshStandardMaterial({ color: 0x222226, roughness: 0.5, metalness: 0.6 });
@@ -308,7 +401,99 @@ const WeaponSystem = {
                 group.add(blade);
                 break;
             }
+            case 'shotgun': {
+                const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.20), darkMetal);
+                group.add(receiver);
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.35, 8), lightMetal);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.z = -0.25;
+                group.add(barrel);
+                const pump = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.04, 0.12), gripMat);
+                pump.position.y = -0.02;
+                pump.position.z = -0.15;
+                group.add(pump);
+                const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.18), gripMat);
+                stock.position.z = 0.18;
+                stock.position.y = -0.02;
+                group.add(stock);
+                const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.04), gripMat);
+                grip.position.y = -0.06;
+                grip.position.z = 0.05;
+                grip.rotation.x = -0.2;
+                group.add(grip);
+                break;
+            }
+            case 'lmg': {
+                const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.25), darkMetal);
+                group.add(receiver);
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.4, 8), lightMetal);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.z = -0.3;
+                group.add(barrel);
+                const boxMag = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.1), magMat);
+                boxMag.position.y = -0.08;
+                boxMag.position.z = 0.0;
+                group.add(boxMag);
+                const stock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.18), gripMat);
+                stock.position.z = 0.2;
+                group.add(stock);
+                const grip = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.08, 0.04), gripMat);
+                grip.position.y = -0.06;
+                grip.position.z = 0.08;
+                grip.rotation.x = -0.2;
+                group.add(grip);
+                const bipod = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.01, 0.01), darkMetal);
+                bipod.position.y = -0.05;
+                bipod.position.z = -0.25;
+                group.add(bipod);
+                break;
+            }
+            case 'burst': {
+                // Similar to AR but bullpup style
+                const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.065, 0.3), darkMetal);
+                group.add(receiver);
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.012, 0.2, 8), lightMetal);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.z = -0.25;
+                group.add(barrel);
+                const mag = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.1, 0.06), magMat);
+                mag.position.y = -0.06;
+                mag.position.z = 0.1; // Bullpup mag behind grip
+                group.add(mag);
+                const grip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.07, 0.03), gripMat);
+                grip.position.y = -0.06;
+                grip.position.z = -0.02;
+                grip.rotation.x = -0.15;
+                group.add(grip);
+                const scope = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), lightMetal);
+                scope.position.y = 0.045;
+                scope.position.z = -0.05;
+                group.add(scope);
+                break;
+            }
         }
+        // Add hands to make it look like it's being held
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xd2996c, roughness: 0.6, metalness: 0.1 });
+        
+        const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.15), skinMat);
+        rightHand.position.set(0.02, -0.12, 0.1);
+        rightHand.rotation.x = -0.5;
+        group.add(rightHand);
+
+        if (type !== 'knife' && type !== 'pistol') {
+            const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.15), skinMat);
+            leftHand.position.set(-0.04, -0.06, -0.05);
+            leftHand.rotation.x = -0.6;
+            leftHand.rotation.z = -0.2;
+            group.add(leftHand);
+        } else if (type === 'pistol') {
+            const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.1), skinMat);
+            leftHand.position.set(-0.02, -0.08, 0.08);
+            leftHand.rotation.x = -0.5;
+            leftHand.rotation.z = -0.2;
+            group.add(leftHand);
+        }
+
         return group;
     },
 
@@ -455,53 +640,63 @@ const WeaponSystem = {
 
         // Raycasting for hit detection
         const spread = this.isADS ? weapon.adsSpread : weapon.spread;
-        const rayDir = new THREE.Vector3(
-            (Math.random() - 0.5) * spread,
-            (Math.random() - 0.5) * spread + this.recoilOffset.y * 0.1,
-            -1
-        ).normalize();
-        rayDir.applyQuaternion(this.camera.quaternion);
+        const hitInfos = [];
+        const numShots = weapon.type === 'shotgun' ? weapon.pellets : (weapon.type === 'burst' ? weapon.burstCount : 1);
 
-        const raycaster = new THREE.Raycaster(
-            this.camera.position.clone(),
-            rayDir,
-            0.1,
-            weapon.range
-        );
+        for (let i = 0; i < numShots; i++) {
+            // Se for burst, o recuo aumenta a cada tiro instantâneo
+            const burstRecoil = weapon.type === 'burst' ? (i * 0.015) : 0;
+            
+            const rayDir = new THREE.Vector3(
+                (Math.random() - 0.5) * spread,
+                (Math.random() - 0.5) * spread + this.recoilOffset.y * 0.1 + burstRecoil,
+                -1
+            ).normalize();
+            rayDir.applyQuaternion(this.camera.quaternion);
 
-        if (weapon.type !== 'knife') {
-            // Bullet tracer com colisão realista
-            let tracerEnd = this.camera.position.clone().add(rayDir.clone().multiplyScalar(weapon.range));
-            let closestDist = weapon.range;
+            const raycaster = new THREE.Raycaster(
+                this.camera.position.clone(),
+                rayDir,
+                0.1,
+                weapon.range
+            );
 
-            // Raycast contra o cenário
-            if (typeof GameMap !== 'undefined' && GameMap.collisionBoxes) {
-                const mapIntersects = raycaster.intersectObjects(
-                    GameMap.collisionBoxes.filter(b => b.mesh).map(b => b.mesh),
-                    false
-                );
-                if (mapIntersects.length > 0 && mapIntersects[0].distance < closestDist) {
-                    closestDist = mapIntersects[0].distance;
-                    tracerEnd.copy(mapIntersects[0].point);
+            if (weapon.type !== 'knife') {
+                // Bullet tracer com colisão realista
+                let tracerEnd = this.camera.position.clone().add(rayDir.clone().multiplyScalar(weapon.range));
+                let closestDist = weapon.range;
+
+                // Raycast contra o cenário
+                if (typeof GameMap !== 'undefined' && GameMap.collisionBoxes) {
+                    const mapIntersects = raycaster.intersectObjects(
+                        GameMap.collisionBoxes.filter(b => b.mesh).map(b => b.mesh),
+                        false
+                    );
+                    if (mapIntersects.length > 0 && mapIntersects[0].distance < closestDist) {
+                        closestDist = mapIntersects[0].distance;
+                        tracerEnd.copy(mapIntersects[0].point);
+                    }
                 }
+
+                // Raycast contra inimigos
+                if (typeof EnemyManager !== 'undefined' && EnemyManager.enemyMeshes) {
+                    const enemyIntersects = raycaster.intersectObjects(EnemyManager.enemyMeshes, false);
+                    if (enemyIntersects.length > 0 && enemyIntersects[0].distance < closestDist) {
+                        closestDist = enemyIntersects[0].distance;
+                        tracerEnd.copy(enemyIntersects[0].point);
+                    }
+                }
+
+                const muzzlePos = new THREE.Vector3(0, 0, -0.5);
+                muzzlePos.applyQuaternion(this.camera.quaternion);
+                muzzlePos.add(this.camera.position);
+                EffectsManager.bulletTracer(muzzlePos, tracerEnd);
             }
 
-            // Raycast contra inimigos
-            if (typeof EnemyManager !== 'undefined' && EnemyManager.enemyMeshes) {
-                const enemyIntersects = raycaster.intersectObjects(EnemyManager.enemyMeshes, false);
-                if (enemyIntersects.length > 0 && enemyIntersects[0].distance < closestDist) {
-                    closestDist = enemyIntersects[0].distance;
-                    tracerEnd.copy(enemyIntersects[0].point);
-                }
-            }
-
-            const muzzlePos = new THREE.Vector3(0, 0, -0.5);
-            muzzlePos.applyQuaternion(this.camera.quaternion);
-            muzzlePos.add(this.camera.position);
-            EffectsManager.bulletTracer(muzzlePos, tracerEnd);
+            hitInfos.push({ raycaster, damage: weapon.damage, headshotMult: weapon.headshotMult });
         }
 
-        return { raycaster, damage: weapon.damage, headshotMult: weapon.headshotMult };
+        return hitInfos;
     },
 
     reload() {
@@ -532,6 +727,7 @@ const WeaponSystem = {
 
     switchWeapon(index) {
         if (index === this.currentIndex || this.switchCooldown > 0 || index < 0 || index >= this.weapons.length) return;
+        if (!this.weapons[index].unlocked) return;
 
         this.weapons[this.currentIndex].model.visible = false;
         this.isReloading = false;
@@ -576,6 +772,47 @@ const WeaponSystem = {
         this.weapons.forEach(w => {
             w.currentMag = w.magSize;
             w.reserveAmmo = w.maxAmmo;
+        });
+    },
+
+    unlockRandomWeapon() {
+        const locked = this.weapons.filter(w => !w.unlocked);
+        if (locked.length > 0) {
+            const w = locked[Math.floor(Math.random() * locked.length)];
+            w.unlocked = true;
+            w.currentMag = w.magSize;
+            w.reserveAmmo = w.maxAmmo;
+            if (typeof HUD !== 'undefined') HUD.addKillFeed(`Arma desbloqueada: ${w.name}!`);
+            this.switchWeapon(this.weapons.indexOf(w));
+        } else {
+            this.resetAmmo();
+            if (typeof HUD !== 'undefined') HUD.addKillFeed(`Munição restaurada ao máximo!`);
+        }
+    },
+
+    skin: 'default',
+    applySkin(skin) {
+        this.skin = skin;
+        this.weapons.forEach(w => {
+            if (w.model) {
+                w.model.traverse(child => {
+                    if (child.isMesh && child.material && child.material.name === 'weaponBody') {
+                        if (skin === 'gold') {
+                            child.material.color.setHex(0xffaa00);
+                            child.material.metalness = 0.9;
+                            child.material.roughness = 0.2;
+                        } else if (skin === 'camo') {
+                            child.material.color.setHex(0x3a5a3a);
+                            child.material.metalness = 0.5;
+                            child.material.roughness = 0.6;
+                        } else {
+                            child.material.color.setHex(0x2a2a2e);
+                            child.material.metalness = 0.8;
+                            child.material.roughness = 0.4;
+                        }
+                    }
+                });
+            }
         });
     }
 };
