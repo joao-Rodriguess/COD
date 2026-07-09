@@ -23,10 +23,10 @@ const PlayerController = {
     regenDelay: 3,      // seconds before regen starts
     regenRate: 15,       // health per second
     mouseSensitivity: 0.002,
-    walkSpeed: 5,
-    sprintSpeed: 8,
+    walkSpeed: 30,
+    sprintSpeed: 13.5,
     crouchSpeed: 2.5,
-    jumpForce: 7,
+    jumpForce: 80,
     gravity: 20,
     standHeight: 1.7,
     crouchHeight: 1.0,
@@ -39,13 +39,13 @@ const PlayerController = {
     isSliding: false,
     slideTimer: 0,
     slideDuration: 0.6,
-    slideSpeed: 12,
+    slideSpeed: 20,
     slideDirection: new THREE.Vector3(),
     slideCooldown: 0,
     isDashing: false,
     dashTimer: 0,
     dashDuration: 0.22,
-    dashSpeed: 18,
+    dashSpeed: 180,
     dashDirection: new THREE.Vector3(),
     dashCooldown: 0,
     maxDashCooldown: 1.2,
@@ -58,7 +58,7 @@ const PlayerController = {
     wallNormal: new THREE.Vector3(),
     cameraRoll: 0,
     targetCameraRoll: 0,
-    nightVisionActive: false,
+    nightVisionActive: true,
 
 
     init(camera, scene) {
@@ -291,10 +291,6 @@ const PlayerController = {
                 case 'KeyS': this.moveBackward = false; break;
                 case 'KeyA': this.moveLeft = false; break;
                 case 'KeyD': this.moveRight = false; break;
-                case 'ShiftLeft':
-                case 'ShiftRight':
-                    this.isSprinting = false;
-                    break;
             }
         });
 
@@ -350,6 +346,30 @@ const PlayerController = {
         // Check barrel hit
         if (typeof GameMap !== 'undefined' && GameMap.checkBarrelHit) {
             GameMap.checkBarrelHit(raycaster, wallDist);
+        }
+
+        // Check online players hits (restricted by wall distance)
+        if (typeof MultiplayerSystem !== 'undefined' && MultiplayerSystem.active) {
+            const playerBoxes = GameMap.collisionBoxes.filter(b => b.isOtherPlayer);
+            if (playerBoxes.length > 0) {
+                for (const box of playerBoxes) {
+                    const boundingBox = new THREE.Box3(box.min, box.max);
+                    const intersectPoint = new THREE.Vector3();
+                    if (raycaster.ray.intersectBox(boundingBox, intersectPoint)) {
+                        const hitDist = raycaster.ray.origin.distanceTo(intersectPoint);
+                        if (hitDist < wallDist) {
+                            const isHeadshot = intersectPoint.y > (box.min.y + (box.max.y - box.min.y) * 0.75);
+                            const finalDamage = isHeadshot ? damage * headshotMult : damage;
+                            
+                            MultiplayerSystem.damageOtherPlayer(box.playerUid, finalDamage);
+                            
+                            AudioManager.playHitmarker();
+                            HUD.showHitmarker(isHeadshot);
+                            return;
+                        }
+                    }
+                }
+            }
         }
 
         // Check enemy hits (restricted by wall distance)
@@ -446,6 +466,13 @@ const PlayerController = {
         if (this.moveLeft) direction.sub(right);
         if (this.moveRight) direction.add(right);
         direction.normalize();
+
+        // Cancelar corrida automaticamente se parar de mover, se mover para trás, se mirar ou se agachar
+        if (this.isSprinting) {
+            if (direction.lengthSq() === 0 || this.moveBackward || (typeof WeaponSystem !== 'undefined' && WeaponSystem.isADS) || this.isCrouching) {
+                this.isSprinting = false;
+            }
+        }
 
         // Inclinação lateral da câmera baseada em movimento lateral
         if (this.isCrouching && this.moveLeft) this.targetCameraRoll = 0.04;
@@ -681,10 +708,10 @@ const PlayerController = {
             }
         }
 
-        // Limites do mapa
-        const bound = 38;
-        this.position.x = Math.max(-bound, Math.min(bound, this.position.x));
-        this.position.z = Math.max(-bound, Math.min(bound, this.position.z));
+        // Limites do mapa (Removidos para exploração infinita estilo Minecraft)
+        // const bound = 38;
+        // this.position.x = Math.max(-bound, Math.min(bound, this.position.x));
+        // this.position.z = Math.max(-bound, Math.min(bound, this.position.z));
 
         // Gravidade e Pulo
         if (!this.isDashing && !this.isWallRunning && !this.isOnLadder) {

@@ -23,6 +23,14 @@
     <!-- Main Menu -->
     <div id="main-menu" style="display:none;">
         <div class="menu-bg"></div>
+        
+        <!-- Painel de Autenticação do Firebase -->
+        <div id="auth-panel" class="auth-panel">
+            <div class="auth-panel-title">PERFIL OPERACIONAL</div>
+            <div id="auth-user-info" class="auth-user-info">Aguardando login...</div>
+            <button id="auth-btn" class="auth-btn-small">CONECTAR CONTA</button>
+        </div>
+
         <div class="menu-content">
             <div class="menu-title-area">
                 <h1 class="menu-title">WARZONE</h1>
@@ -48,7 +56,10 @@
             </div>
             <div class="menu-buttons">
                 <button class="menu-btn primary" id="btn-start">
-                    <span class="btn-icon">▶</span> INICIAR COMBATE
+                    <span class="btn-icon">▶</span> INICIAR COMBATE LOCAL
+                </button>
+                <button class="menu-btn primary" id="btn-start-online" style="background: rgba(0, 150, 255, 0.25); border-color: #0096ff; color: #fff; text-shadow: 0 0 10px #0096ff; box-shadow: 0 0 15px rgba(0, 150, 255, 0.2);">
+                    <span class="btn-icon">📡</span> JOGAR ONLINE MULTIPLAYER
                 </button>
                 <button class="menu-btn" id="btn-shop" style="background: rgba(0, 255, 136, 0.2); border-color: var(--hud-green);">
                     <span class="btn-icon">🛒</span> LOJA DE ARMAS
@@ -314,8 +325,46 @@
         </div>
     </div>
 
+    <!-- Auth Modal -->
+    <div id="auth-modal" class="auth-modal" style="display:none;">
+        <div class="auth-modal-content">
+            <h2 id="auth-modal-title">CONEXÃO OPERACIONAL</h2>
+            <div class="auth-form-group">
+                <label>EMAIL MILITAR</label>
+                <input type="email" id="auth-email" placeholder="nome@operacao.com">
+            </div>
+            <div class="auth-form-group">
+                <label>CÓDIGO DE ACESSO (SENHA)</label>
+                <input type="password" id="auth-password" placeholder="••••••••">
+            </div>
+            <div class="auth-form-group" id="auth-group-codename" style="display:none;">
+                <label>CODINOME TÁTICO</label>
+                <input type="text" id="auth-codename" placeholder="ex: Capitão Price">
+            </div>
+            <div id="auth-error-msg" class="auth-error-msg">Erro de conexão</div>
+            <div class="auth-modal-buttons">
+                <button class="menu-btn primary" id="auth-btn-submit">CONFIRMAR CREDENCIAIS</button>
+                <button class="menu-btn" id="auth-btn-google" style="background: rgba(66, 133, 244, 0.15); border-color: #4285f4; color: #fff;">
+                    <span style="font-weight: 900; color: #4285f4; margin-right: 5px;">G</span> ENTRAR COM GOOGLE
+                </button>
+                <button class="menu-btn" id="auth-btn-switch">CRIAR NOVA CONTA</button>
+                <button class="menu-btn" id="auth-btn-anonymous" style="background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.3);">ENTRAR ANÔNIMO (SALVAR NA NUVEM)</button>
+                <button class="menu-btn" id="auth-btn-cancel" style="background: rgba(255,0,0,0.1); border-color: rgba(255,0,0,0.3);">CANCELAR</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.js" crossorigin="anonymous"></script>
+    
+    <!-- Firebase SDK (Compat v9) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/firebase-service.js"></script>
+    <script src="js/multiplayer.js"></script>
+
     <script src="js/audio.js?v=8"></script>
     <script src="js/effects.js?v=8"></script>
     <script src="js/map.js?v=8"></script>

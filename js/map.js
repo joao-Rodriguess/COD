@@ -1,5 +1,5 @@
 // ============================
-// GAME MAP - 3D Urban Environment
+// GAME MAP - 3D Infinite Procedural Environment (Chunk-based with Canvas Textures)
 // ============================
 
 const GameMap = {
@@ -7,380 +7,874 @@ const GameMap = {
     collisionBoxes: [],
     enemySpawnPoints: [],
     playerSpawn: new THREE.Vector3(0, 1.7, 0),
-    mapSize: 300,
+    mapSize: 450, // Mantido para compatibilidade
+    chunkSize: 150,
+    loadedChunks: {},
+    currentChunkX: null,
+    currentChunkZ: null,
+    mapGroup: null,
+    skyMesh: null,
+    sunLight: null,
+    materials: null,
+    currentTheme: 'urban',
 
     init(scene) {
         this.scene = scene;
         this.collisionBoxes = [];
         this.enemySpawnPoints = [];
         this.ladders = [];
+        this.chests = [];
+        this.explosiveBarrels = [];
+        this.loadedChunks = {};
+        this.currentChunkX = null;
+        this.currentChunkZ = null;
+        this.mapGroup = null;
+        this.skyMesh = null;
+        this.sunLight = null;
         this.materials = {
             ground: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95, metalness: 0.05 }),
             sky: new THREE.MeshBasicMaterial({ color: 0x1a1a2e, side: THREE.BackSide }),
             bldg1: this._mat(0x4a4a55),
             bldg2: this._mat(0x555560),
-            bldg3: this._mat(0x3d3d48)
+            bldg3: this._mat(0x3d3d48),
+            window: new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.05, metalness: 0.95 })
         };
-        this._createGround();
-        this._createSkybox();
-        this._createBuildings();
-        this._createWalls();
-        this._createCover();
-        this._createLighting();
-        this._createDetails();
-        this._defineSpawnPoints();
-        this._createLadders();
-        this._createChests();
+    },
+
+    _cleanup() {
+        if (this.skyMesh) {
+            this.scene.remove(this.skyMesh);
+            if (this.skyMesh.geometry) this.skyMesh.geometry.dispose();
+            if (this.skyMesh.material) this.skyMesh.material.dispose();
+            this.skyMesh = null;
+        }
+
+        if (this.mapGroup) {
+            this.scene.remove(this.mapGroup);
+            this.mapGroup.traverse(child => {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => mat.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                }
+            });
+            this.mapGroup = null;
+        }
+
+        // Dispose procedural textures
+        for (const matKey in this.materials) {
+            const mat = this.materials[matKey];
+            if (mat && mat.map) {
+                mat.map.dispose();
+                mat.map = null;
+            }
+        }
+        
+        this.collisionBoxes = [];
+        this.enemySpawnPoints = [];
+        this.ladders = [];
+        this.chests = [];
+        this.explosiveBarrels = [];
+        this.loadedChunks = {};
+        this.currentChunkX = null;
+        this.currentChunkZ = null;
+        this.sunLight = null;
+    },
+
+    _add(obj) {
+        if (this.mapGroup) {
+            this.mapGroup.add(obj);
+        } else {
+            this.scene.add(obj);
+        }
+        return obj;
+    },
+
+    _addBox(w, h, d, x, y, z, material, parentGroup, addCollision = true) {
+        const geo = new THREE.BoxGeometry(w, h, d);
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        parentGroup.add(mesh);
+
+        const colBox = {
+            min: new THREE.Vector3(x - w/2, y - h/2, z - d/2),
+            max: new THREE.Vector3(x + w/2, y + h/2, z + d/2),
+            mesh: mesh
+        };
+
+        if (addCollision) {
+            this.collisionBoxes.push(colBox);
+        }
+        return colBox;
+    },
+
+    _createProceduralTexture(type, baseColorHex) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Pinta a cor base
+        ctx.fillStyle = baseColorHex;
+        ctx.fillRect(0, 0, 512, 512);
+
+        if (type === 'asphalt') {
+            // Asfalto áspero granulado com rachaduras sutis
+            const imgData = ctx.getImageData(0, 0, 512, 512);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const noise = (Math.random() - 0.5) * 15;
+                data[i] = Math.max(0, Math.min(255, data[i] + noise));
+                data[i+1] = Math.max(0, Math.min(255, data[i+1] + noise));
+                data[i+2] = Math.max(0, Math.min(255, data[i+2] + noise));
+            }
+            ctx.putImageData(imgData, 0, 0);
+
+            // Desenhar ranhuras e rachaduras
+            ctx.strokeStyle = 'rgba(20, 20, 20, 0.4)';
+            ctx.lineWidth = 1.5;
+            for (let j = 0; j < 5; j++) {
+                ctx.beginPath();
+                let x = Math.random() * 512;
+                let y = Math.random() * 512;
+                ctx.moveTo(x, y);
+                for (let k = 0; k < 6; k++) {
+                    x += (Math.random() - 0.5) * 35;
+                    y += (Math.random() - 0.5) * 35;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+        } 
+        else if (type === 'sand') {
+            // Areia com grãos finos dourados e variações onduladas
+            const grad = ctx.createLinearGradient(0, 0, 512, 512);
+            grad.addColorStop(0, baseColorHex);
+            grad.addColorStop(0.5, '#dccb99');
+            grad.addColorStop(1, '#baaa72');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            const imgData = ctx.getImageData(0, 0, 512, 512);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const noise = (Math.random() - 0.5) * 10;
+                data[i] = Math.max(0, Math.min(255, data[i] + noise));
+                data[i+1] = Math.max(0, Math.min(255, data[i+1] + noise * 0.9));
+                data[i+2] = Math.max(0, Math.min(255, data[i+2] + noise * 0.7));
+            }
+            ctx.putImageData(imgData, 0, 0);
+        } 
+        else if (type === 'snow') {
+            // Neve compacta e brilhante
+            const grad = ctx.createRadialGradient(256, 256, 10, 256, 256, 360);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(1, '#f0f0fb');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Brilhos
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            for (let j = 0; j < 300; j++) {
+                ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+            }
+        } 
+        else if (type === 'building') {
+            // Painéis retangulares de concreto pré-moldado / revestimento de prédios
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.lineWidth = 2;
+            
+            const spacingX = 64;
+            const spacingY = 32;
+            ctx.beginPath();
+            for (let y = 0; y < 512; y += spacingY) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(512, y);
+            }
+            let row = 0;
+            for (let y = 0; y < 512; y += spacingY) {
+                const offset = (row % 2) * (spacingX / 2);
+                for (let x = offset; x < 512 + spacingX; x += spacingX) {
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x, y + spacingY);
+                }
+                row++;
+            }
+            ctx.stroke();
+
+            // Sombra interna sutil para relevo (bevel)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            row = 0;
+            for (let y = 1; y < 512; y += spacingY) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(512, y);
+                const offset = (row % 2) * (spacingX / 2);
+                for (let x = offset + 1; x < 512 + spacingX; x += spacingX) {
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x, y + spacingY - 1);
+                }
+                row++;
+            }
+            ctx.stroke();
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        return texture;
     },
 
     applyTheme(theme) {
-        let groundColor, skyColor, fogColor, bldg1, bldg2, bldg3, fogDensity;
+        this.currentTheme = theme;
+        this._cleanup();
+
+        this.mapGroup = new THREE.Group();
+        this.scene.add(this.mapGroup);
+
+        let groundColor, skyColor, fogColor, bldg1, bldg2, bldg3;
+        let fogNear = 100, fogFar = 350;
+        let groundTexType = 'asphalt';
+        let groundColorStr = '#3a3a3a';
+        let groundTextureRepeat = 25;
+
         if (theme === 'desert') {
             groundColor = 0xc2b280; skyColor = 0xffcc99; fogColor = 0xffcc99;
             bldg1 = 0xd2c290; bldg2 = 0xb2a270; bldg3 = 0xc2b280;
-            fogDensity = 0.015; // Dust storm
+            fogNear = 60;
+            fogFar = 280;
+            groundTexType = 'sand';
+            groundColorStr = '#c2b280';
+            groundTextureRepeat = 12;
         } else if (theme === 'snow') {
             groundColor = 0xddddff; skyColor = 0x99aadd; fogColor = 0xaabbdd;
             bldg1 = 0x8899aa; bldg2 = 0x778899; bldg3 = 0x99aabb;
-            fogDensity = 0.02; // Blizzard
+            fogNear = 50;
+            fogFar = 240;
+            groundTexType = 'snow';
+            groundColorStr = '#ddddff';
+            groundTextureRepeat = 15;
         } else { // urban
             groundColor = 0x3a3a3a; skyColor = 0x1a1a2e; fogColor = 0x1a1a2e;
             bldg1 = 0x4a4a55; bldg2 = 0x555560; bldg3 = 0x3d3d48;
-            fogDensity = 0.01; // Dense urban fog
+            fogNear = 100;
+            fogFar = 350;
+            groundTexType = 'asphalt';
+            groundColorStr = '#3a3a3a';
+            groundTextureRepeat = 25;
         }
         
         if (this.scene.fog) {
             this.scene.fog.color.setHex(fogColor);
-            this.scene.fog.density = fogDensity;
+            this.scene.fog.near = fogNear;
+            this.scene.fog.far = fogFar;
         }
+
+        // Criar texturas do solo
+        const groundTex = this._createProceduralTexture(groundTexType, groundColorStr);
+        groundTex.repeat.set(groundTextureRepeat, groundTextureRepeat);
+        
         this.materials.ground.color.setHex(groundColor);
+        this.materials.ground.map = groundTex;
+        this.materials.ground.needsUpdate = true;
+
         this.materials.sky.color.setHex(skyColor);
+
+        // Criar texturas dos prédios
+        const hexStr = (num) => '#' + num.toString(16).padStart(6, '0');
+        const bldg1Tex = this._createProceduralTexture('building', hexStr(bldg1));
+        bldg1Tex.repeat.set(2, 4);
+        const bldg2Tex = this._createProceduralTexture('building', hexStr(bldg2));
+        bldg2Tex.repeat.set(3, 5);
+        const bldg3Tex = this._createProceduralTexture('building', hexStr(bldg3));
+        bldg3Tex.repeat.set(2, 3);
+
         this.materials.bldg1.color.setHex(bldg1);
+        this.materials.bldg1.map = bldg1Tex;
+        this.materials.bldg1.needsUpdate = true;
+
         this.materials.bldg2.color.setHex(bldg2);
+        this.materials.bldg2.map = bldg2Tex;
+        this.materials.bldg2.needsUpdate = true;
+
         this.materials.bldg3.color.setHex(bldg3);
+        this.materials.bldg3.map = bldg3Tex;
+        this.materials.bldg3.needsUpdate = true;
+
+        // 1. Criar o Skybox global
+        this._createSkybox();
+
+        // 2. Criar iluminação global
+        this._createLighting();
+
+        // 3. Gerar os chunks iniciais (grade 3x3 ao redor de 0,0)
+        this._updateChunks(new THREE.Vector3(0, 0, 0), true);
     },
 
     _mat(color, roughness = 0.8) {
         return new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.1 });
     },
 
-    _addBox(w, h, d, x, y, z, material, addCollision = true) {
-        const geo = new THREE.BoxGeometry(w, h, d);
-        const mesh = new THREE.Mesh(geo, material);
-        mesh.position.set(x, y, z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.scene.add(mesh);
-
-        if (addCollision) {
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(x - w/2, y - h/2, z - d/2),
-                max: new THREE.Vector3(x + w/2, y + h/2, z + d/2),
-                mesh: mesh
-            });
-        }
-        return mesh;
-    },
-
-    _createGround() {
-        // Main ground
-        const groundGeo = new THREE.PlaneGeometry(this.mapSize, this.mapSize, 20, 20);
-        const ground = new THREE.Mesh(groundGeo, this.materials.ground);
-        ground.rotation.x = -Math.PI / 2;
-        ground.receiveShadow = true;
-        this.scene.add(ground);
-
-        // Road markings
-        const roadGeo = new THREE.PlaneGeometry(6, this.mapSize);
-        const roadMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9 });
-        const road1 = new THREE.Mesh(roadGeo, roadMat);
-        road1.rotation.x = -Math.PI / 2;
-        road1.position.y = 0.01;
-        this.scene.add(road1);
-
-        const road2 = road1.clone();
-        road2.rotation.z = Math.PI / 2;
-        road2.position.y = 0.01;
-        this.scene.add(road2);
-
-        // Road center lines
-        for (let i = -this.mapSize/2; i < this.mapSize/2; i += 4) {
-            const lineGeo = new THREE.PlaneGeometry(0.15, 2);
-            const lineMat = new THREE.MeshBasicMaterial({ color: 0x888833 });
-            const line = new THREE.Mesh(lineGeo, lineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(0, 0.02, i);
-            this.scene.add(line);
-        }
+    _hash(x, z, seed = 0) {
+        const sx = Math.sin((x + seed) * 12.9898 + (z - seed) * 78.233) * 43758.5453;
+        return sx - Math.floor(sx);
     },
 
     _createSkybox() {
-        const skyGeo = new THREE.SphereGeometry(200, 32, 32);
-        const sky = new THREE.Mesh(skyGeo, this.materials.sky);
-        this.scene.add(sky);
-
-        // Fog
-        this.scene.fog = new THREE.FogExp2(0x1a1a2e, 0.012);
-    },
-
-    _createBuildings() {
-        const roofMat = this._mat(0x2a2a35);
-
-        const buildings = [];
-        
-        for (let i = 0; i < 150; i++) {
-            const w = 5 + Math.random() * 15;
-            const h = 4 + Math.random() * 15;
-            const d = 5 + Math.random() * 15;
-            
-            const x = (Math.random() - 0.5) * (this.mapSize - 20);
-            const z = (Math.random() - 0.5) * (this.mapSize - 20);
-            
-            // Keep center area clear for plaza/spawn
-            if (Math.abs(x) < 40 && Math.abs(z) < 40) continue;
-            
-            buildings.push({ w, h, d, x, z });
-        }
-
-        buildings.forEach((b, i) => {
-            const mat = [this.materials.bldg1, this.materials.bldg2, this.materials.bldg3][i % 3];
-            this._addBox(b.w, b.h, b.d, b.x, b.h / 2, b.z, mat);
-
-            // Roof overhang
-            this._addBox(b.w + 0.5, 0.3, b.d + 0.5, b.x, b.h, b.z, roofMat, false);
-
-            // Windows
-            const winMat = new THREE.MeshBasicMaterial({ color: 0x334455 });
-            const winSize = 0.8;
-            const winGap = 2.5;
-            for (let wy = 2; wy < b.h - 1; wy += winGap) {
-                // Front face
-                for (let wx = -b.w/2 + 1.5; wx < b.w/2 - 1; wx += winGap) {
-                    const win = new THREE.Mesh(
-                        new THREE.PlaneGeometry(winSize, winSize * 1.4),
-                        winMat
-                    );
-                    win.position.set(b.x + wx, wy, b.z + b.d/2 + 0.01);
-                    this.scene.add(win);
-                }
-                // Back face
-                for (let wx = -b.w/2 + 1.5; wx < b.w/2 - 1; wx += winGap) {
-                    const win = new THREE.Mesh(
-                        new THREE.PlaneGeometry(winSize, winSize * 1.4),
-                        winMat
-                    );
-                    win.position.set(b.x + wx, wy, b.z - b.d/2 - 0.01);
-                    win.rotation.y = Math.PI;
-                    this.scene.add(win);
-                }
-            }
-        });
-    },
-
-    _createWalls() {
-        const wallMat = this._mat(0x505058);
-        const concMat = this._mat(0x484850);
-
-        // Boundary walls
-        const halfSize = this.mapSize / 2;
-        this._addBox(this.mapSize, 5, 0.5, 0, 2.5, -halfSize, wallMat);
-        this._addBox(this.mapSize, 5, 0.5, 0, 2.5, halfSize, wallMat);
-        this._addBox(0.5, 5, this.mapSize, -halfSize, 2.5, 0, wallMat);
-        this._addBox(0.5, 5, this.mapSize, halfSize, 2.5, 0, wallMat);
-
-        // Interior walls/barriers
-        const walls = [
-            { w: 8, h: 3, d: 0.3, x: -5, z: -10 },
-            { w: 0.3, h: 3, d: 6, x: 8, z: -8 },
-            { w: 6, h: 2.5, d: 0.3, x: 0, z: 8 },
-            { w: 0.3, h: 2.5, d: 8, x: -12, z: 10 },
-            { w: 10, h: 3, d: 0.3, x: 15, z: -12 },
-            { w: 0.3, h: 2, d: 5, x: -18, z: -8 },
-        ];
-
-        walls.forEach(w => {
-            this._addBox(w.w, w.h, w.d, w.x, w.h/2, w.z, concMat);
-        });
-    },
-
-    _createCover() {
-        const crateMat = this._mat(0x6b5b3a);
-        const metalMat = this._mat(0x5a5a60);
-        const barrierMat = this._mat(0x666666);
-
-        // Crate clusters
-        const cratePositions = [
-            { x: 5, z: 5 }, { x: 6.2, z: 5 }, { x: 5.6, z: 5, y: 1.2 },
-            { x: -10, z: -5 }, { x: -11.2, z: -5 },
-            { x: 15, z: 10 },
-            { x: -3, z: -15 }, { x: -1.8, z: -15 },
-            { x: 20, z: -15 },
-            { x: -25, z: 15 },
-        ];
-
-        cratePositions.forEach(p => {
-            this._addBox(1.2, 1.2, 1.2, p.x, (p.y || 0) + 0.6, p.z, crateMat);
-        });
-
-        // Jersey barriers
-        const barriers = [
-            { x: -5, z: 3, rot: 0 },
-            { x: -7, z: 3, rot: 0 },
-            { x: 12, z: 0, rot: Math.PI/2 },
-            { x: 12, z: 2, rot: Math.PI/2 },
-            { x: -3, z: -22, rot: 0.3 },
-            { x: 20, z: 8, rot: -0.5 },
-        ];
-
-        barriers.forEach(b => {
-            const geo = new THREE.BoxGeometry(2, 1, 0.6);
-            const mesh = new THREE.Mesh(geo, barrierMat);
-            mesh.position.set(b.x, 0.5, b.z);
-            mesh.rotation.y = b.rot;
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            this.scene.add(mesh);
-
-            // Simplified AABB collision
-            const halfW = 1, halfD = 0.3;
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(b.x - halfW, 0, b.z - halfD),
-                max: new THREE.Vector3(b.x + halfW, 1, b.z + halfD)
-            });
-        });
-
-        // Metal barrels
-        const barrelPositions = [
-            { x: 8, z: -3 }, { x: -14, z: 7 }, { x: 22, z: 18 },
-            { x: -27, z: -10 }, { x: 3, z: 20 },
-        ];
-
-        barrelPositions.forEach(p => {
-            const barrelGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.2, 8);
-            const barrel = new THREE.Mesh(barrelGeo, metalMat);
-            barrel.position.set(p.x, 0.6, p.z);
-            barrel.castShadow = true;
-            this.scene.add(barrel);
-
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(p.x - 0.4, 0, p.z - 0.4),
-                max: new THREE.Vector3(p.x + 0.4, 1.2, p.z + 0.4)
-            });
-        });
+        const skyGeo = new THREE.SphereGeometry(600, 32, 32);
+        this.skyMesh = new THREE.Mesh(skyGeo, this.materials.sky);
+        this.scene.add(this.skyMesh);
     },
 
     _createLighting() {
-        // Ambient light
         const ambient = new THREE.AmbientLight(0x404060, 0.6);
-        this.scene.add(ambient);
+        this._add(ambient);
 
-        // Directional sun
-        const sun = new THREE.DirectionalLight(0xffeedd, 1.2);
-        sun.position.set(30, 50, 20);
-        sun.castShadow = true;
-        sun.shadow.mapSize.width = 2048;
-        sun.shadow.mapSize.height = 2048;
-        sun.shadow.camera.near = 0.5;
-        sun.shadow.camera.far = 150;
-        sun.shadow.camera.left = -50;
-        sun.shadow.camera.right = 50;
-        sun.shadow.camera.top = 50;
-        sun.shadow.camera.bottom = -50;
-        sun.shadow.bias = -0.001;
-        this.scene.add(sun);
+        this.sunLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+        this.sunLight.position.set(30, 50, 20);
+        this.sunLight.castShadow = true;
+        this.sunLight.shadow.mapSize.width = 2048;
+        this.sunLight.shadow.mapSize.height = 2048;
+        this.sunLight.shadow.camera.near = 0.5;
+        this.sunLight.shadow.camera.far = 150;
+        this.sunLight.shadow.camera.left = -50;
+        this.sunLight.shadow.camera.right = 50;
+        this.sunLight.shadow.camera.top = 50;
+        this.sunLight.shadow.camera.bottom = -50;
+        this.sunLight.shadow.bias = -0.001;
+        this._add(this.sunLight);
 
-        // Hemisphere light for sky color
         const hemi = new THREE.HemisphereLight(0x6688cc, 0x443322, 0.4);
-        this.scene.add(hemi);
-
-        // Some point lights near buildings
-        const lightPositions = [
-            { x: -25, z: -20, color: 0xffaa66 },
-            { x: 28, z: -18, color: 0xff8844 },
-            { x: 25, z: 25, color: 0xffaa66 },
-            { x: -15, z: 3, color: 0xff9955 },
-        ];
-
-        lightPositions.forEach(l => {
-            const pl = new THREE.PointLight(l.color, 0.5, 15);
-            pl.position.set(l.x, 4, l.z);
-            this.scene.add(pl);
-        });
+        this._add(hemi);
     },
 
-    _createDetails() {
-        // Street lamps
-        const lampMat = this._mat(0x333333);
-        const lampPositions = [
-            { x: 4, z: -8 }, { x: -4, z: 8 },
-            { x: 4, z: 12 }, { x: -4, z: -18 },
-            { x: 20, z: 4 }, { x: -20, z: -4 },
-        ];
+    _updateChunks(playerPos, force = false) {
+        const chunkX = Math.floor((playerPos.x + this.chunkSize / 2) / this.chunkSize);
+        const chunkZ = Math.floor((playerPos.z + this.chunkSize / 2) / this.chunkSize);
 
-        lampPositions.forEach(p => {
-            // Pole
-            const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 5, 6);
-            const pole = new THREE.Mesh(poleGeo, lampMat);
-            pole.position.set(p.x, 2.5, p.z);
-            pole.castShadow = true;
-            this.scene.add(pole);
+        if (this.skyMesh) {
+            this.skyMesh.position.set(playerPos.x, 0, playerPos.z);
+        }
+        if (this.sunLight) {
+            this.sunLight.position.set(playerPos.x + 30, 50, playerPos.z + 20);
+            this.sunLight.target.position.set(playerPos.x, 0, playerPos.z);
+        }
 
-            // Light fixture
-            const fixGeo = new THREE.CylinderGeometry(0.3, 0.15, 0.2, 6);
-            const fix = new THREE.Mesh(fixGeo, lampMat);
-            fix.position.set(p.x, 5, p.z);
-            this.scene.add(fix);
+        if (this.currentChunkX === chunkX && this.currentChunkZ === chunkZ && !force) {
+            return;
+        }
 
-            // Light
-            const light = new THREE.PointLight(0xffcc88, 0.6, 12);
-            light.position.set(p.x, 4.8, p.z);
-            this.scene.add(light);
+        this.currentChunkX = chunkX;
+        this.currentChunkZ = chunkZ;
 
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(p.x - 0.15, 0, p.z - 0.15),
-                max: new THREE.Vector3(p.x + 0.15, 5, p.z + 0.15)
-            });
-        });
+        const activeKeys = new Set();
+        const renderDist = 1; // Grade 3x3
 
-        // Sandbag positions
-        const sandMat = this._mat(0x7a6b50);
-        const sandbagPositions = [
-            { x: 0, z: 0 },
-            { x: -10, z: 12 },
-            { x: 18, z: -8 },
-        ];
+        for (let dx = -renderDist; dx <= renderDist; dx++) {
+            for (let dz = -renderDist; dz <= renderDist; dz++) {
+                const cx = chunkX + dx;
+                const cz = chunkZ + dz;
+                const key = `${cx},${cz}`;
+                activeKeys.add(key);
+                this._generateChunk(cx, cz);
+            }
+        }
 
-        sandbagPositions.forEach(p => {
-            for (let row = 0; row < 2; row++) {
-                for (let i = 0; i < 3; i++) {
-                    const sbGeo = new THREE.BoxGeometry(1.2, 0.4, 0.5);
-                    const sb = new THREE.Mesh(sbGeo, sandMat);
-                    sb.position.set(p.x + i * 1.1 - 1.1, row * 0.4 + 0.2, p.z);
-                    sb.castShadow = true;
-                    this.scene.add(sb);
+        for (const key in this.loadedChunks) {
+            if (!activeKeys.has(key)) {
+                const [cx, cz] = key.split(',').map(Number);
+                this._unloadChunk(cx, cz);
+            }
+        }
+    },
+
+    _generateChunk(cx, cz) {
+        const key = `${cx},${cz}`;
+        if (this.loadedChunks[key]) return;
+
+        const chunkGroup = new THREE.Group();
+        this.mapGroup.add(chunkGroup);
+
+        const chunkCollisionBoxes = [];
+        const chunkLadders = [];
+        const chunkChests = [];
+        const chunkBarrels = [];
+
+        // 1. Chão local
+        const groundGeo = new THREE.PlaneGeometry(this.chunkSize, this.chunkSize);
+        const ground = new THREE.Mesh(groundGeo, this.materials.ground);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(cx * this.chunkSize, 0, cz * this.chunkSize);
+        ground.receiveShadow = true;
+        chunkGroup.add(ground);
+
+        // 2. Estradas (Centralizadas)
+        if (cx === 0 || cz === 0) {
+            let roadMat;
+            let roadW = 6;
+            if (this.currentTheme === 'desert') {
+                roadMat = new THREE.MeshStandardMaterial({ color: 0xa58a55, roughness: 1.0, metalness: 0.0 });
+                roadW = 8;
+            } else if (this.currentTheme === 'snow') {
+                roadMat = new THREE.MeshStandardMaterial({ color: 0xb5c5d5, roughness: 0.9, metalness: 0.1 });
+                roadW = 7;
+            } else {
+                roadMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9 });
+            }
+
+            // Estrada vertical
+            if (cx === 0) {
+                const roadGeo = new THREE.PlaneGeometry(roadW, this.chunkSize);
+                const road = new THREE.Mesh(roadGeo, roadMat);
+                road.rotation.x = -Math.PI / 2;
+                road.position.set(0, 0.01, cz * this.chunkSize);
+                chunkGroup.add(road);
+
+                if (this.currentTheme === 'urban') {
+                    for (let i = -this.chunkSize/2; i < this.chunkSize/2; i += 4) {
+                        const lineGeo = new THREE.PlaneGeometry(0.15, 2);
+                        const lineMat = new THREE.MeshBasicMaterial({ color: 0x888833 });
+                        const line = new THREE.Mesh(lineGeo, lineMat);
+                        line.rotation.x = -Math.PI / 2;
+                        line.position.set(0, 0.02, cz * this.chunkSize + i);
+                        chunkGroup.add(line);
+                    }
                 }
             }
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(p.x - 1.8, 0, p.z - 0.3),
-                max: new THREE.Vector3(p.x + 2.2, 0.8, p.z + 0.3)
+
+            // Estrada horizontal
+            if (cz === 0) {
+                const roadGeo = new THREE.PlaneGeometry(roadW, this.chunkSize);
+                const road = new THREE.Mesh(roadGeo, roadMat);
+                road.rotation.x = -Math.PI / 2;
+                road.rotation.z = Math.PI / 2;
+                road.position.set(cx * this.chunkSize, 0.01, 0);
+                chunkGroup.add(road);
+
+                if (this.currentTheme === 'urban' && cx !== 0) {
+                    for (let i = -this.chunkSize/2; i < this.chunkSize/2; i += 4) {
+                        const lineGeo = new THREE.PlaneGeometry(0.15, 2);
+                        const lineMat = new THREE.MeshBasicMaterial({ color: 0x888833 });
+                        const line = new THREE.Mesh(lineGeo, lineMat);
+                        line.rotation.x = -Math.PI / 2;
+                        line.rotation.z = Math.PI / 2;
+                        line.position.set(cx * this.chunkSize + i, 0.02, 0);
+                        chunkGroup.add(line);
+                    }
+                }
+            }
+        }
+
+        // Materiais para construções
+        const roofMat = this._mat(0x2a2a35);
+        const houseRoofMat = new THREE.MeshStandardMaterial({ color: 0x8b3a3a, roughness: 0.9 });
+        const desertHouseRoofMat = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+        const snowHouseRoofMat = new THREE.MeshStandardMaterial({ color: 0x2f3542, roughness: 0.9 });
+        const snowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+
+        // 3. Gerar Prédios e Casas (2 a 4 por chunk)
+        const numBldgs = Math.floor(this._hash(cx, cz, 100) * 3) + 2;
+        for (let i = 0; i < numBldgs; i++) {
+            const bSeed = i * 20;
+            const isHouse = this._hash(cx, cz, bSeed + 1) < 0.45;
+
+            let w, h, d;
+            if (isHouse) {
+                w = 7 + this._hash(cx, cz, bSeed + 2) * 5;
+                h = 3.2 + this._hash(cx, cz, bSeed + 3) * 2.5;
+                d = 7 + this._hash(cx, cz, bSeed + 4) * 5;
+            } else {
+                w = 8 + this._hash(cx, cz, bSeed + 2) * 11;
+                h = 5 + this._hash(cx, cz, bSeed + 3) * 13;
+                d = 8 + this._hash(cx, cz, bSeed + 4) * 11;
+            }
+
+            const maxOffset = this.chunkSize / 2 - Math.max(w, d) / 2 - 10;
+            const localX = (this._hash(cx, cz, bSeed + 5) - 0.5) * 2 * maxOffset;
+            const localZ = (this._hash(cx, cz, bSeed + 6) - 0.5) * 2 * maxOffset;
+
+            const x = cx * this.chunkSize + localX;
+            const z = cz * this.chunkSize + localZ;
+
+            // Evitar spawns e estradas
+            if (cx === 0 && cz === 0 && Math.abs(x) < 25 && Math.abs(z) < 25) continue;
+            if (cx === 0 && Math.abs(x) < 10) continue;
+            if (cz === 0 && Math.abs(z) < 10) continue;
+
+            const mat = [this.materials.bldg1, this.materials.bldg2, this.materials.bldg3][Math.floor(this._hash(cx, cz, bSeed + 7) * 3)];
+            
+            // Adicionar bloco de prédio/casa
+            const buildingCol = this._addBox(w, h, d, x, h/2, z, mat, chunkGroup, true);
+            chunkCollisionBoxes.push(buildingCol);
+
+            if (isHouse) {
+                // Telhado
+                let rMat = houseRoofMat;
+                if (this.currentTheme === 'desert') rMat = desertHouseRoofMat;
+                else if (this.currentTheme === 'snow') rMat = snowHouseRoofMat;
+
+                const roofHeight = 2.0 + this._hash(cx, cz, bSeed + 8) * 1.0;
+                const roofGeo = new THREE.ConeGeometry(w * 0.73, roofHeight, 4);
+                const roof = new THREE.Mesh(roofGeo, rMat);
+                roof.position.set(x, h + roofHeight / 2, z);
+                roof.rotation.y = Math.PI / 4;
+                roof.scale.set(1, 1, d / w);
+                roof.castShadow = true;
+                chunkGroup.add(roof);
+
+                if (this.currentTheme === 'snow') {
+                    const snowRoof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.75, roofHeight, 4), snowMat);
+                    snowRoof.position.set(x, h + roofHeight / 2 + 0.05, z);
+                    snowRoof.rotation.y = Math.PI / 4;
+                    snowRoof.scale.set(1, 1, d / w);
+                    chunkGroup.add(snowRoof);
+                }
+
+                // Porta
+                const doorMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+                const door = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.0), doorMat);
+                door.position.set(x, 1.0, z + d/2 + 0.02);
+                chunkGroup.add(door);
+
+                // Janelas
+                const winGeo = new THREE.PlaneGeometry(0.8, 1.0);
+
+                const leftWin = new THREE.Mesh(winGeo, this.materials.window);
+                leftWin.position.set(x - w/2 - 0.02, h * 0.6, z);
+                leftWin.rotation.y = -Math.PI / 2;
+                chunkGroup.add(leftWin);
+
+                const rightWin = leftWin.clone();
+                rightWin.position.x = x + w/2 + 0.02;
+                rightWin.rotation.y = Math.PI / 2;
+                chunkGroup.add(rightWin);
+            } else {
+                // Cobertura do prédio
+                const over = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.3, d + 0.5), roofMat);
+                over.position.set(x, h, z);
+                chunkGroup.add(over);
+
+                // Janelas espelhadas verticais
+                const stripWidth = 0.8;
+                const numStrips = Math.max(1, Math.floor(w / 4));
+                const stripGap = w / (numStrips + 1);
+
+                for (let j = 1; j <= numStrips; j++) {
+                    const winStrip = new THREE.Mesh(new THREE.PlaneGeometry(stripWidth, h - 2), this.materials.window);
+                    winStrip.position.set(x - w/2 + j * stripGap, h / 2, z + d/2 + 0.01);
+                    chunkGroup.add(winStrip);
+
+                    const winStripBack = winStrip.clone();
+                    winStripBack.position.z = z - d/2 - 0.01;
+                    winStripBack.rotation.y = Math.PI;
+                    chunkGroup.add(winStripBack);
+                }
+            }
+        }
+
+        // 4. Postes de Luz na estrada
+        if (cx === 0 || cz === 0) {
+            let lampColor = 0x333333;
+            let lightColor = 0xffcc88;
+            if (this.currentTheme === 'desert') {
+                lampColor = 0x6b4c35;
+                lightColor = 0xff6600;
+            } else if (this.currentTheme === 'snow') {
+                lampColor = 0x2c3e50;
+                lightColor = 0xddedff;
+            }
+            const lampMat = this._mat(lampColor);
+
+            const lampInterval = 50;
+            for (let offset = -this.chunkSize/2 + 25; offset < this.chunkSize/2; offset += lampInterval) {
+                let lx = 0, lz = 0;
+                if (cx === 0) {
+                    lx = 4.2;
+                    lz = cz * this.chunkSize + offset;
+                } else {
+                    lx = cx * this.chunkSize + offset;
+                    lz = 4.2;
+                }
+
+                if (Math.abs(lx) < 20 && Math.abs(lz) < 20) continue;
+
+                const lampGroup = new THREE.Group();
+
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 5, 6), lampMat);
+                pole.position.y = 2.5;
+                pole.castShadow = true;
+                lampGroup.add(pole);
+
+                const fix = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.15, 0.2, 6), lampMat);
+                fix.position.y = 5;
+                lampGroup.add(fix);
+
+                if (this.currentTheme === 'snow') {
+                    const snowCap = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 6), snowMat);
+                    snowCap.position.y = 5.1;
+                    lampGroup.add(snowCap);
+                }
+
+                const light = new THREE.PointLight(lightColor, 0.8, 15);
+                light.position.y = 4.8;
+                lampGroup.add(light);
+
+                lampGroup.position.set(lx, 0, lz);
+                chunkGroup.add(lampGroup);
+
+                chunkCollisionBoxes.push({
+                    min: new THREE.Vector3(lx - 0.15, 0, lz - 0.15),
+                    max: new THREE.Vector3(lx + 0.15, 5, lz + 0.15)
+                });
+            }
+        }
+
+        // 5. Decorações temáticas
+        if (this.currentTheme === 'desert') {
+            const cactusGreen = new THREE.MeshStandardMaterial({ color: 0x3b6b2f, roughness: 0.9 });
+            const sandDuneMat = new THREE.MeshStandardMaterial({ color: 0xc2b280, roughness: 1.0 });
+
+            for (let j = 0; j < 5; j++) {
+                const localX = (this._hash(cx, cz, j * 15 + 1) - 0.5) * (this.chunkSize - 20);
+                const localZ = (this._hash(cx, cz, j * 15 + 2) - 0.5) * (this.chunkSize - 20);
+                const x = cx * this.chunkSize + localX;
+                const z = cz * this.chunkSize + localZ;
+
+                if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
+                if (cx === 0 && Math.abs(x) < 10) continue;
+                if (cz === 0 && Math.abs(z) < 10) continue;
+
+                const cacto = new THREE.Group();
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.8, 8), cactusGreen);
+                trunk.position.y = 1.4;
+                trunk.castShadow = true;
+                cacto.add(trunk);
+
+                const arm1H = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.7, 8), cactusGreen);
+                arm1H.rotation.z = Math.PI / 2;
+                arm1H.position.set(-0.4, 1.6, 0);
+                cacto.add(arm1H);
+
+                const arm1V = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.8, 8), cactusGreen);
+                arm1V.position.set(-0.7, 2.0, 0);
+                cacto.add(arm1V);
+
+                cacto.position.set(x, 0, z);
+                chunkGroup.add(cacto);
+
+                chunkCollisionBoxes.push({
+                    min: new THREE.Vector3(x - 0.8, 0, z - 0.4),
+                    max: new THREE.Vector3(x + 0.8, 2.8, z + 0.4)
+                });
+            }
+
+            if (this._hash(cx, cz, 99) < 0.6) {
+                const localX = (this._hash(cx, cz, 97) - 0.5) * (this.chunkSize - 40);
+                const localZ = (this._hash(cx, cz, 98) - 0.5) * (this.chunkSize - 40);
+                const x = cx * this.chunkSize + localX;
+                const z = cz * this.chunkSize + localZ;
+
+                if (Math.abs(x) < 30 && Math.abs(z) < 30) {
+                    // Ignora
+                } else {
+                    const duneGeo = new THREE.SphereGeometry(6, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+                    const dune = new THREE.Mesh(duneGeo, sandDuneMat);
+                    dune.position.set(x, -0.5, z);
+                    dune.scale.set(2.5, 0.8, 1.2);
+                    dune.rotation.y = this._hash(cx, cz, 96) * Math.PI;
+                    dune.receiveShadow = true;
+                    dune.castShadow = true;
+                    chunkGroup.add(dune);
+
+                    chunkCollisionBoxes.push({
+                        min: new THREE.Vector3(x - 6, 0, z - 3),
+                        max: new THREE.Vector3(x + 6, 2.5, z + 3)
+                    });
+                }
+            }
+        } else if (this.currentTheme === 'snow') {
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2f13, roughness: 0.95 });
+            const pineMat = new THREE.MeshStandardMaterial({ color: 0x1e3f20, roughness: 0.9 });
+
+            for (let j = 0; j < 5; j++) {
+                const localX = (this._hash(cx, cz, j * 15 + 1) - 0.5) * (this.chunkSize - 20);
+                const localZ = (this._hash(cx, cz, j * 15 + 2) - 0.5) * (this.chunkSize - 20);
+                const x = cx * this.chunkSize + localX;
+                const z = cz * this.chunkSize + localZ;
+
+                if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
+                if (cx === 0 && Math.abs(x) < 10) continue;
+                if (cz === 0 && Math.abs(z) < 10) continue;
+
+                const pinheiro = new THREE.Group();
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.25, 1.8, 8), trunkMat);
+                trunk.position.y = 0.9;
+                trunk.castShadow = true;
+                pinheiro.add(trunk);
+
+                const baseCone = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 8), pineMat);
+                baseCone.position.y = 2.4;
+                baseCone.castShadow = true;
+                pinheiro.add(baseCone);
+
+                const baseSnow = new THREE.Mesh(new THREE.ConeGeometry(1.65, 0.5, 8), snowMat);
+                baseSnow.position.set(0, 1.6, 0);
+                pinheiro.add(baseSnow);
+
+                const midCone = new THREE.Mesh(new THREE.ConeGeometry(1.2, 1.8, 8), pineMat);
+                midCone.position.y = 3.6;
+                midCone.castShadow = true;
+                pinheiro.add(midCone);
+
+                const midSnow = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.4, 8), snowMat);
+                midSnow.position.set(0, 2.9, 0);
+                pinheiro.add(midSnow);
+
+                pinheiro.position.set(x, 0, z);
+                chunkGroup.add(pinheiro);
+
+                chunkCollisionBoxes.push({
+                    min: new THREE.Vector3(x - 0.8, 0, z - 0.8),
+                    max: new THREE.Vector3(x + 0.8, 4.0, z + 0.8)
+                });
+            }
+        }
+
+        // 6. Barris Explosivos procedurais
+        const numBarrels = Math.floor(this._hash(cx, cz, 40) * 3);
+        for (let j = 0; j < numBarrels; j++) {
+            const localX = (this._hash(cx, cz, j * 12 + 41) - 0.5) * (this.chunkSize - 30);
+            const localZ = (this._hash(cx, cz, j * 12 + 42) - 0.5) * (this.chunkSize - 30);
+            const x = cx * this.chunkSize + localX;
+            const z = cz * this.chunkSize + localZ;
+
+            if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
+            if (cx === 0 && Math.abs(x) < 8) continue;
+            if (cz === 0 && Math.abs(z) < 8) continue;
+
+            const barrelGroup = new THREE.Group();
+
+            const barrelGeo = new THREE.CylinderGeometry(0.45, 0.45, 1.3, 10);
+            const barrelMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.5, metalness: 0.6 });
+            const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+            barrel.position.y = 0.65;
+            barrel.castShadow = true;
+            barrelGroup.add(barrel);
+
+            const stripeGeo = new THREE.PlaneGeometry(0.35, 0.25);
+            const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide });
+            const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+            stripe.position.set(0, 0.7, 0.46);
+            barrelGroup.add(stripe);
+
+            const warnLight = new THREE.PointLight(0xff4400, 0.3, 4);
+            warnLight.position.set(0, 1.4, 0);
+            barrelGroup.add(warnLight);
+
+            barrelGroup.position.set(x, 0, z);
+            chunkGroup.add(barrelGroup);
+
+            const barrelData = {
+                x: x,
+                z: z,
+                mesh: barrelGroup,
+                light: warnLight,
+                exploded: false,
+                respawnTimer: 0
+            };
+
+            chunkBarrels.push(barrelData);
+
+            chunkCollisionBoxes.push({
+                min: new THREE.Vector3(x - 0.45, 0, z - 0.45),
+                max: new THREE.Vector3(x + 0.45, 1.3, z + 0.45),
+                mesh: barrel,
+                isExplosiveBarrel: true,
+                barrelData: barrelData
             });
-        });
+        }
+
+        // 7. Baús procedurais
+        if (this._hash(cx, cz, 70) < 0.4) {
+            const localX = (this._hash(cx, cz, 71) - 0.5) * (this.chunkSize - 30);
+            const localZ = (this._hash(cx, cz, 72) - 0.5) * (this.chunkSize - 30);
+            const x = cx * this.chunkSize + localX;
+            const z = cz * this.chunkSize + localZ;
+
+            if (Math.abs(x) < 25 && Math.abs(z) < 25) {
+                // Ignora
+            } else {
+                const chestGroup = new THREE.Group();
+                const chestMat = new THREE.MeshStandardMaterial({ color: 0x553311, roughness: 0.9 });
+                const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.0), chestMat);
+                base.position.y = 0.5;
+                base.castShadow = true;
+                chestGroup.add(base);
+
+                const lid = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.0), new THREE.MeshStandardMaterial({ color: 0x664422, roughness: 0.9 }));
+                lid.position.y = 1.1;
+                lid.castShadow = true;
+                chestGroup.add(lid);
+
+                chestGroup.position.set(x, 0, z);
+                chunkGroup.add(chestGroup);
+
+                chunkCollisionBoxes.push({
+                    min: new THREE.Vector3(x - 0.75, 0, z - 0.5),
+                    max: new THREE.Vector3(x + 0.75, 1.2, z + 0.5)
+                });
+
+                chunkChests.push({
+                    x: x, z: z, group: chestGroup, opened: false
+                });
+            }
+        }
+
+        this.loadedChunks[key] = {
+            group: chunkGroup,
+            collisionBoxes: chunkCollisionBoxes,
+            ladders: chunkLadders,
+            chests: chunkChests,
+            barrels: chunkBarrels
+        };
+
+        this.collisionBoxes.push(...chunkCollisionBoxes);
+        this.ladders.push(...chunkLadders);
+        this.chests.push(...chunkChests);
+        this.explosiveBarrels.push(...chunkBarrels);
     },
 
-    _defineSpawnPoints() {
-        this.playerSpawn = new THREE.Vector3(0, 1.7, 0);
+    _unloadChunk(cx, cz) {
+        const key = `${cx},${cz}`;
+        const chunk = this.loadedChunks[key];
+        if (!chunk) return;
 
-        this.enemySpawnPoints = [];
-        for (let i = 0; i < 30; i++) {
-            let x = (Math.random() - 0.5) * (this.mapSize - 20);
-            let z = (Math.random() - 0.5) * (this.mapSize - 20);
-            if (Math.abs(x) < 30 && Math.abs(z) < 30) {
-                // Afastar do centro
-                x += Math.sign(x) * 30;
-                z += Math.sign(z) * 30;
+        this.mapGroup.remove(chunk.group);
+
+        chunk.group.traverse(child => {
+            if (child.isMesh) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                    else child.material.dispose();
+                }
             }
-            this.enemySpawnPoints.push(new THREE.Vector3(x, 1.7, z));
-        }
+        });
+
+        this.collisionBoxes = this.collisionBoxes.filter(b => !chunk.collisionBoxes.includes(b));
+        this.ladders = this.ladders.filter(l => !chunk.ladders.includes(l));
+        this.chests = this.chests.filter(c => !chunk.chests.includes(c));
+        this.explosiveBarrels = this.explosiveBarrels.filter(b => !chunk.barrels.includes(b));
+
+        delete this.loadedChunks[key];
     },
 
     checkCollision(position, radius = 0.4) {
@@ -404,219 +898,28 @@ const GameMap = {
         return { collided: false };
     },
 
-    _createLadders() {
-        // Escada 1: Large building 1 (x: -25, z: -25, h: 8) -> encostada na face leste (x: -18.9, z: -25, rot: -PI/2)
-        this._createLadderMesh(-18.9, -25, 8, -Math.PI / 2);
-
-        // Escada 2: Large building 2 (x: 28, z: -22, h: 10) -> encostada na face oeste (x: 22.9, z: -22, rot: PI/2)
-        this._createLadderMesh(22.9, -22, 10, Math.PI / 2);
-
-        // Escada 3: Large building 3 (x: -20, z: 25, h: 7) -> encostada na face leste (x: -12.9, z: 25, rot: -Math.PI / 2)
-        this._createLadderMesh(-12.9, 25, 7, -Math.PI / 2);
-
-        // Escada 4: Medium building (x: -15, z: 0, h: 6) -> encostada na face leste (x: -10.9, z: 0, rot: -Math.PI / 2)
-        this._createLadderMesh(-10.9, 0, 6, -Math.PI / 2);
-    },
-
-    _createLadderMesh(x, z, h, rotationY) {
-        const group = new THREE.Group();
-        const metalMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 });
-        const stepMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, metalness: 0.6, roughness: 0.3 });
-
-        // Trilhos verticais
-        const rail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 8), metalMat);
-        rail1.position.set(-0.25, h / 2, 0);
-        group.add(rail1);
-
-        const rail2 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 8), metalMat);
-        rail2.position.set(0.25, h / 2, 0);
-        group.add(rail2);
-
-        // Degraus
-        const stepGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.5, 8);
-        for (let sy = 0.2; sy < h; sy += 0.35) {
-            const step = new THREE.Mesh(stepGeo, stepMat);
-            step.rotation.z = Math.PI / 2;
-            step.position.set(0, sy, 0);
-            group.add(step);
-        }
-
-        group.position.set(x, 0, z);
-        group.rotation.y = rotationY;
-        this.scene.add(group);
-
-        // Criar Box3 de colisão/gatilho
-        const ladderBox = new THREE.Box3();
-        const triggerWidth = 1.0;
-        const triggerDepth = 1.0;
-
-        const isXAligned = Math.abs(Math.sin(rotationY)) > 0.5;
-        const wX = isXAligned ? triggerDepth : triggerWidth;
-        const wZ = isXAligned ? triggerWidth : triggerDepth;
-
-        ladderBox.set(
-            new THREE.Vector3(x - wX/2, 0, z - wZ/2),
-            new THREE.Vector3(x + wX/2, h + 0.5, z + wZ/2)
-        );
-
-        this.ladders.push({
-            box: ladderBox,
-            x: x,
-            z: z,
-            h: h
-        });
-    },
-
     getCollisionBoxes() { return this.collisionBoxes; },
-    getSpawnPoints() { return this.enemySpawnPoints; },
-    getPlayerSpawn() { return this.playerSpawn.clone(); },
-
-    // ============================
-    // CHESTS
-    // ============================
-    chests: [],
-    _createChests() {
-        this.chests = [];
-        const chestPositions = [];
-        
-        // Random chests across the expanded map
-        for (let i = 0; i < 20; i++) {
-            const x = (Math.random() - 0.5) * (this.mapSize - 10);
-            const z = (Math.random() - 0.5) * (this.mapSize - 10);
-            // Evitar nascer exatamente no centro
-            if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
-            chestPositions.push({ x, z });
+    getSpawnPoints() {
+        const points = [];
+        if (typeof PlayerController !== 'undefined') {
+            const playerPos = PlayerController.getPosition();
+            for (let i = 0; i < 15; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 45 + Math.random() * 55;
+                points.push(new THREE.Vector3(
+                    playerPos.x + Math.cos(angle) * distance,
+                    1.7,
+                    playerPos.z + Math.sin(angle) * distance
+                ));
+            }
+        } else {
+            for (let i = 0; i < 15; i++) {
+                points.push(new THREE.Vector3((Math.random() - 0.5) * 80, 1.7, (Math.random() - 0.5) * 80));
+            }
         }
-        
-        const chestMat = new THREE.MeshStandardMaterial({ color: 0x553311, roughness: 0.9 });
-        const lidMat = new THREE.MeshStandardMaterial({ color: 0x664422, roughness: 0.9 });
-        
-        chestPositions.forEach(p => {
-            const group = new THREE.Group();
-            
-            const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.0), chestMat);
-            base.position.y = 0.5;
-            base.castShadow = true;
-            group.add(base);
-            
-            const lid = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.0), lidMat);
-            lid.position.y = 1.1;
-            lid.castShadow = true;
-            group.add(lid);
-            
-            group.position.set(p.x, 0, p.z);
-            this.scene.add(group);
-            
-            this.collisionBoxes.push({
-                min: new THREE.Vector3(p.x - 0.75, 0, p.z - 0.5),
-                max: new THREE.Vector3(p.x + 0.75, 1.2, p.z + 0.5)
-            });
-            
-            this.chests.push({
-                x: p.x, z: p.z, group: group, opened: false
-            });
-        });
+        return points;
     },
-
-    // ============================
-    // EXPLOSIVE BARRELS
-    // ============================
-    explosiveBarrels: [],
-
-    createExplosiveBarrels() {
-        this.explosiveBarrels = [];
-
-        const barrelPositions = [
-            { x: -7, z: -6 },
-            { x: 14, z: 3 },
-            { x: -18, z: 15 },
-            { x: 25, z: -12 },
-            { x: 3, z: 22 },
-        ];
-
-        barrelPositions.forEach(p => {
-            this._createExplosiveBarrel(p.x, p.z);
-        });
-    },
-
-    _createExplosiveBarrel(x, z) {
-        const group = new THREE.Group();
-
-        // Barrel body - red danger color
-        const barrelGeo = new THREE.CylinderGeometry(0.45, 0.45, 1.3, 10);
-        const barrelMat = new THREE.MeshStandardMaterial({
-            color: 0xcc2222,
-            roughness: 0.5,
-            metalness: 0.6
-        });
-        const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-        barrel.position.y = 0.65;
-        barrel.castShadow = true;
-        group.add(barrel);
-
-        // Top rim
-        const rimGeo = new THREE.TorusGeometry(0.45, 0.03, 6, 10);
-        const rimMat = new THREE.MeshStandardMaterial({ color: 0x881111, metalness: 0.8, roughness: 0.3 });
-        const topRim = new THREE.Mesh(rimGeo, rimMat);
-        topRim.position.y = 1.3;
-        topRim.rotation.x = Math.PI / 2;
-        group.add(topRim);
-
-        // Bottom rim
-        const bottomRim = topRim.clone();
-        bottomRim.position.y = 0.05;
-        group.add(bottomRim);
-
-        // Middle band
-        const bandGeo = new THREE.TorusGeometry(0.46, 0.02, 6, 10);
-        const band = new THREE.Mesh(bandGeo, rimMat);
-        band.position.y = 0.65;
-        band.rotation.x = Math.PI / 2;
-        group.add(band);
-
-        // Hazard stripe (yellow triangle on barrel)
-        const stripeGeo = new THREE.PlaneGeometry(0.35, 0.25);
-        const stripeMat = new THREE.MeshBasicMaterial({
-            color: 0xffcc00,
-            side: THREE.DoubleSide
-        });
-        const stripe1 = new THREE.Mesh(stripeGeo, stripeMat);
-        stripe1.position.set(0, 0.7, 0.46);
-        group.add(stripe1);
-
-        const stripe2 = stripe1.clone();
-        stripe2.position.set(0, 0.7, -0.46);
-        stripe2.rotation.y = Math.PI;
-        group.add(stripe2);
-
-        // Warning glow light
-        const warnLight = new THREE.PointLight(0xff4400, 0.3, 4);
-        warnLight.position.set(0, 1.4, 0);
-        group.add(warnLight);
-
-        group.position.set(x, 0, z);
-        this.scene.add(group);
-
-        const barrelData = {
-            x: x,
-            z: z,
-            mesh: group,
-            light: warnLight,
-            exploded: false,
-            respawnTimer: 0
-        };
-
-        this.explosiveBarrels.push(barrelData);
-
-        // Add collision
-        this.collisionBoxes.push({
-            min: new THREE.Vector3(x - 0.45, 0, z - 0.45),
-            max: new THREE.Vector3(x + 0.45, 1.3, z + 0.45),
-            mesh: barrel,
-            isExplosiveBarrel: true,
-            barrelData: barrelData
-        });
-    },
+    getPlayerSpawn() { return this.playerSpawn.clone(); },
 
     detonateBarrel(barrel) {
         if (barrel.exploded) return;
@@ -624,8 +927,10 @@ const GameMap = {
 
         const pos = new THREE.Vector3(barrel.x, 0.65, barrel.z);
 
-        // Remove barrel mesh
-        this.scene.remove(barrel.mesh);
+        if (barrel.mesh && barrel.mesh.parent) {
+            barrel.mesh.parent.remove(barrel.mesh);
+        }
+
         barrel.mesh.traverse(child => {
             if (child.isMesh) {
                 if (child.geometry) child.geometry.dispose();
@@ -633,12 +938,10 @@ const GameMap = {
             }
         });
 
-        // Explosion effects
         EffectsManager.barrelExplosion(pos);
         EffectsManager.screenShake(5);
         AudioManager.playBarrelExplosion();
 
-        // Damage enemies in radius (6m)
         const radius = 6;
         if (typeof EnemyManager !== 'undefined') {
             for (const enemy of EnemyManager.enemies) {
@@ -652,7 +955,6 @@ const GameMap = {
             }
         }
 
-        // Damage player if close
         if (typeof PlayerController !== 'undefined' && PlayerController.isAlive) {
             const playerPos = PlayerController.getPosition();
             const dist = new THREE.Vector3(playerPos.x, 0, playerPos.z).distanceTo(new THREE.Vector3(pos.x, 0, pos.z));
@@ -663,7 +965,6 @@ const GameMap = {
             }
         }
 
-        // Chain reaction - detonate other nearby barrels
         for (const other of this.explosiveBarrels) {
             if (other === barrel || other.exploded) continue;
             const dist = Math.sqrt(
@@ -674,7 +975,6 @@ const GameMap = {
             }
         }
 
-        // Respawn barrel after 30 seconds
         barrel.respawnTimer = setTimeout(() => {
             barrel.exploded = false;
             this._respawnBarrel(barrel);
@@ -682,24 +982,52 @@ const GameMap = {
     },
 
     _respawnBarrel(barrel) {
-        // Recreate barrel at same position
-        const oldBarrels = this.explosiveBarrels;
-        const idx = oldBarrels.indexOf(barrel);
-        if (idx === -1) return;
+        const cx = Math.floor((barrel.x + this.chunkSize / 2) / this.chunkSize);
+        const cz = Math.floor((barrel.z + this.chunkSize / 2) / this.chunkSize);
+        const key = `${cx},${cz}`;
+        const chunk = this.loadedChunks[key];
+        if (!chunk) return;
 
-        // Remove old collision box
         this.collisionBoxes = this.collisionBoxes.filter(b => !b.barrelData || b.barrelData !== barrel);
 
-        // Create new barrel at same position
-        this._createExplosiveBarrel(barrel.x, barrel.z);
+        const barrelGroup = new THREE.Group();
+        const barrelGeo = new THREE.CylinderGeometry(0.45, 0.45, 1.3, 10);
+        const barrelMat = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.5, metalness: 0.6 });
+        const mesh = new THREE.Mesh(barrelGeo, barrelMat);
+        mesh.position.y = 0.65;
+        mesh.castShadow = true;
+        barrelGroup.add(mesh);
 
-        // Replace in array
-        oldBarrels[idx] = this.explosiveBarrels[this.explosiveBarrels.length - 1];
-        this.explosiveBarrels.pop();
+        const stripeGeo = new THREE.PlaneGeometry(0.35, 0.25);
+        const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide });
+        const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+        stripe.position.set(0, 0.7, 0.46);
+        barrelGroup.add(stripe);
+
+        const warnLight = new THREE.PointLight(0xff4400, 0.3, 4);
+        warnLight.position.set(0, 1.4, 0);
+        barrelGroup.add(warnLight);
+
+        barrelGroup.position.set(barrel.x, 0, barrel.z);
+        chunk.group.add(barrelGroup);
+
+        barrel.mesh = barrelGroup;
+        barrel.light = warnLight;
+
+        this.collisionBoxes.push({
+            min: new THREE.Vector3(barrel.x - 0.45, 0, barrel.z - 0.45),
+            max: new THREE.Vector3(barrel.x + 0.45, 1.3, barrel.z + 0.45),
+            mesh: mesh,
+            isExplosiveBarrel: true,
+            barrelData: barrel
+        });
     },
 
-    updateBarrels(dt) {
-        // Animate warning lights on barrels
+    update(dt, playerPos) {
+        if (playerPos) {
+            this._updateChunks(playerPos);
+        }
+
         const time = performance.now() * 0.003;
         for (const barrel of this.explosiveBarrels) {
             if (barrel.exploded || !barrel.light) continue;
@@ -707,15 +1035,21 @@ const GameMap = {
         }
     },
 
+    updateBarrels(dt) {
+        let playerPos = null;
+        if (typeof PlayerController !== 'undefined' && PlayerController.isAlive) {
+            playerPos = PlayerController.getPosition();
+        }
+        this.update(dt, playerPos);
+    },
+
     checkBarrelHit(raycaster, wallDist = Infinity) {
-        // Check if a bullet hit an explosive barrel
         for (const barrel of this.explosiveBarrels) {
             if (barrel.exploded) continue;
             const barrelPos = new THREE.Vector3(barrel.x, 0.65, barrel.z);
             const dist = raycaster.ray.origin.distanceTo(barrelPos);
             if (dist > 80 || dist > wallDist) continue;
 
-            // Simple sphere intersection check
             const sphere = new THREE.Sphere(barrelPos, 0.5);
             const intersectPoint = raycaster.ray.intersectSphere(sphere, new THREE.Vector3());
             if (intersectPoint) {
@@ -729,4 +1063,3 @@ const GameMap = {
         return false;
     }
 };
-

@@ -78,6 +78,9 @@ const Shop = {
     saveUnlocks() {
         const unlocked = WeaponSystem.weapons.map(w => w.unlocked);
         localStorage.setItem('cod_weapons', JSON.stringify(unlocked));
+        if (typeof FirebaseService !== 'undefined') {
+            FirebaseService.syncData({ unlockedWeapons: unlocked });
+        }
     }
 };
 

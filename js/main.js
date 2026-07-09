@@ -15,11 +15,15 @@ const Game = {
     player: null,
     maxWaveDelay: 5,
     money: 0,
+    highScore: 0,
 
     addMoney(amount) {
         this.money += amount;
         localStorage.setItem('cod_money', this.money);
         if (typeof HUD !== 'undefined') HUD.updateMoney(this.money);
+        if (typeof FirebaseService !== 'undefined') {
+            FirebaseService.syncData({ money: this.money });
+        }
     },
 
     spendMoney(amount) {
@@ -27,6 +31,9 @@ const Game = {
             this.money -= amount;
             localStorage.setItem('cod_money', this.money);
             if (typeof HUD !== 'undefined') HUD.updateMoney(this.money);
+            if (typeof FirebaseService !== 'undefined') {
+                FirebaseService.syncData({ money: this.money });
+            }
             return true;
         }
         return false;
@@ -35,7 +42,7 @@ const Game = {
     init() {
         // Three.js setup
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 700);
         this.scene.add(this.camera); // Add camera to scene so children like weapon models are rendered
         this.renderer = new THREE.WebGLRenderer({
             canvas: document.getElementById('game-canvas'),
@@ -55,7 +62,6 @@ const Game = {
         // Init subsystems
         AudioManager.init();
         GameMap.init(this.scene);
-        GameMap.createExplosiveBarrels();
         EffectsManager.init(this.scene, this.camera);
         WeaponSystem.init(this.scene, this.camera);
         EnemyManager.init(this.scene);
@@ -81,6 +87,7 @@ const Game = {
 
         // Setup UI buttons
         this._setupUI();
+        this._setupFirebaseUI();
 
         // Loading simulation
         this._simulateLoading();
@@ -127,8 +134,22 @@ const Game = {
     _setupUI() {
         // Start button
         document.getElementById('btn-start').addEventListener('click', () => {
+            if (typeof MultiplayerSystem !== 'undefined') {
+                MultiplayerSystem.stopOnline();
+            }
             this.showIntro();
         });
+
+        // Start online multiplayer button
+        const btnStartOnline = document.getElementById('btn-start-online');
+        if (btnStartOnline) {
+            btnStartOnline.addEventListener('click', async () => {
+                const success = await MultiplayerSystem.startOnline();
+                if (success) {
+                    this.showIntro();
+                }
+            });
+        }
 
         // Shop button
         const btnShop = document.getElementById('btn-shop');
@@ -291,6 +312,15 @@ const Game = {
             WeatherSystem.update(dt);
             GameMap.updateBarrels(dt);
 
+            // Sincronizar multiplayer online se ativo
+            if (typeof MultiplayerSystem !== 'undefined' && MultiplayerSystem.active) {
+                const now = Date.now();
+                if (now - MultiplayerSystem.lastUpdate > 80) { // A cada 80ms
+                    MultiplayerSystem.sendMyState();
+                    MultiplayerSystem.lastUpdate = now;
+                }
+            }
+
             // Wave management
             this._updateWaves(dt);
 
@@ -370,6 +400,24 @@ const Game = {
         document.getElementById('death-score').textContent = this.score;
         document.getElementById('death-wave').textContent = this.wave;
         document.exitPointerLock();
+
+        // Salvar Recorde no Firebase se superado
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            if (typeof FirebaseService !== 'undefined') {
+                FirebaseService.syncData({
+                    highScore: this.highScore,
+                    maxWave: this.wave
+                });
+            }
+        }
+        
+        // Incrementar o total de kills geral no Firestore
+        if (typeof FirebaseService !== 'undefined' && FirebaseService.user && !FirebaseService.isGuest) {
+            db.collection("players").doc(FirebaseService.user.uid).update({
+                totalKills: firebase.firestore.FieldValue.increment(this.kills)
+            }).catch(e => console.error("Erro ao incrementar mortes:", e));
+        }
     },
 
     restart() {
@@ -384,11 +432,160 @@ const Game = {
         this.state = 'menu';
         EnemyManager.cleanup();
         EffectsManager.cleanup();
+        if (typeof MultiplayerSystem !== 'undefined') {
+            MultiplayerSystem.stopOnline();
+        }
         document.getElementById('death-screen').style.display = 'none';
         document.getElementById('pause-menu').style.display = 'none';
         document.getElementById('hud').style.display = 'none';
         document.getElementById('main-menu').style.display = 'block';
         document.exitPointerLock();
+    },
+
+    _setupFirebaseUI() {
+        const authPanel = document.getElementById('auth-panel');
+        const userInfo = document.getElementById('auth-user-info');
+        const authBtn = document.getElementById('auth-btn');
+
+        const authModal = document.getElementById('auth-modal');
+        const modalTitle = document.getElementById('auth-modal-title');
+        const emailInput = document.getElementById('auth-email');
+        const passwordInput = document.getElementById('auth-password');
+        const codenameGroup = document.getElementById('auth-group-codename');
+        const codenameInput = document.getElementById('auth-codename');
+        const errorMsg = document.getElementById('auth-error-msg');
+        const btnSubmit = document.getElementById('auth-btn-submit');
+        const btnGoogle = document.getElementById('auth-btn-google');
+        const btnSwitch = document.getElementById('auth-btn-switch');
+        const btnAnon = document.getElementById('auth-btn-anonymous');
+        const btnCancel = document.getElementById('auth-btn-cancel');
+
+        let isRegisterMode = false;
+
+        // Atualizar painel operacional com base no estado do login
+        const updatePanel = (user) => {
+            if (user) {
+                const name = user.codename || (user.isAnonymous ? 'Anônimo' : user.email);
+                userInfo.textContent = `OPERADOR: ${name.toUpperCase()}`;
+                authBtn.textContent = "DESCONECTAR";
+            } else {
+                userInfo.textContent = "MODO LOCAL (CONVIDADO)";
+                authBtn.textContent = "CONECTAR CONTA";
+            }
+        };
+
+        // Inicializar Firebase Service
+        if (typeof FirebaseService !== 'undefined') {
+            FirebaseService.init(updatePanel);
+        }
+
+        // Abrir/Fechar modal ou desconectar
+        authBtn.addEventListener('click', () => {
+            if (FirebaseService.user) {
+                FirebaseService.logout();
+                updatePanel(null);
+            } else {
+                isRegisterMode = false;
+                modalTitle.textContent = "CONEXÃO OPERACIONAL";
+                btnSwitch.textContent = "CRIAR NOVA CONTA";
+                codenameGroup.style.display = 'none';
+                errorMsg.style.display = 'none';
+                emailInput.value = '';
+                passwordInput.value = '';
+                codenameInput.value = '';
+                authModal.style.display = 'flex';
+            }
+        });
+
+        // Alternar modo Login / Registro
+        btnSwitch.addEventListener('click', () => {
+            isRegisterMode = !isRegisterMode;
+            if (isRegisterMode) {
+                modalTitle.textContent = "REGISTRO OPERACIONAL";
+                btnSwitch.textContent = "JÁ TENHO CONTA (ENTRAR)";
+                codenameGroup.style.display = 'block';
+            } else {
+                modalTitle.textContent = "CONEXÃO OPERACIONAL";
+                btnSwitch.textContent = "CRIAR NOVA CONTA";
+                codenameGroup.style.display = 'none';
+            }
+        });
+
+        // Submeter formulário (Confirmar Credenciais)
+        btnSubmit.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+
+            if (!email || !password) {
+                errorMsg.textContent = "Preencha todos os campos.";
+                errorMsg.style.display = 'block';
+                return;
+            }
+
+            errorMsg.style.display = 'none';
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = "CONECTANDO...";
+
+            let result;
+            if (isRegisterMode) {
+                const codename = codenameInput.value.trim();
+                result = await FirebaseService.registerEmail(email, password, codename);
+            } else {
+                result = await FirebaseService.loginEmail(email, password);
+            }
+
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "CONFIRMAR CREDENCIAIS";
+
+            if (result.success) {
+                authModal.style.display = 'none';
+            } else {
+                errorMsg.textContent = result.error || "Erro de autenticação.";
+                errorMsg.style.display = 'block';
+            }
+        });
+
+        // Entrar com Google
+        btnGoogle.addEventListener('click', async () => {
+            errorMsg.style.display = 'none';
+            btnGoogle.disabled = true;
+            const originalText = btnGoogle.innerHTML;
+            btnGoogle.innerHTML = "CONECTANDO AO GOOGLE...";
+            
+            const result = await FirebaseService.loginGoogle();
+            
+            btnGoogle.disabled = false;
+            btnGoogle.innerHTML = originalText;
+            
+            if (result.success) {
+                authModal.style.display = 'none';
+            } else {
+                errorMsg.textContent = result.error || "Erro de login com Google.";
+                errorMsg.style.display = 'block';
+            }
+        });
+
+        // Entrar anonimamente
+        btnAnon.addEventListener('click', async () => {
+            errorMsg.style.display = 'none';
+            btnAnon.disabled = true;
+            btnAnon.textContent = "CONECTANDO NA NUVEM...";
+            const result = await FirebaseService.loginAnonymous();
+            btnAnon.disabled = false;
+            btnAnon.textContent = "ENTRAR ANÔNIMO (SALVAR NA NUVEM)";
+            
+            if (result.success) {
+                authModal.style.display = 'none';
+            } else {
+                errorMsg.textContent = result.error || "Erro ao conectar anonimamente.";
+                errorMsg.style.display = 'block';
+            }
+        });
+
+        // Cancelar modal
+        btnCancel.addEventListener('click', () => {
+            authModal.style.display = 'none';
+        });
     }
 };
 

@@ -1274,3 +1274,129 @@ body {
     justify-content: center;
 }
 
+/* ============================
+   FIREBASE AUTHENTICATION PANEL & MODAL
+   ============================ */
+.auth-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(13, 17, 23, 0.85);
+    border: 1px solid var(--hud-border);
+    padding: 15px 20px;
+    border-radius: 4px;
+    z-index: 950;
+    font-family: var(--font-main);
+    color: white;
+    text-shadow: 0 0 5px black;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    min-width: 250px;
+}
+.auth-panel-title {
+    font-family: var(--font-title);
+    font-size: 0.9rem;
+    color: var(--hud-green);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+.auth-user-info {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    opacity: 0.9;
+}
+.auth-btn-small {
+    padding: 6px 12px;
+    background: rgba(0, 255, 136, 0.15);
+    border: 1px solid var(--hud-green);
+    color: white;
+    font-family: var(--font-title);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    margin-top: 5px;
+}
+.auth-btn-small:hover {
+    background: var(--hud-green);
+    color: black;
+    box-shadow: 0 0 10px var(--hud-green);
+}
+
+/* Modal de Autenticação */
+.auth-modal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(5, 5, 10, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    font-family: var(--font-main);
+}
+.auth-modal-content {
+    background: rgba(13, 17, 23, 0.95);
+    border: 2px solid var(--hud-green);
+    width: 380px;
+    padding: 30px;
+    border-radius: 4px;
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+    color: white;
+}
+.auth-modal-content h2 {
+    font-family: var(--font-title);
+    color: var(--hud-green);
+    font-size: 1.6rem;
+    margin-bottom: 20px;
+    text-align: center;
+    letter-spacing: 2px;
+}
+.auth-form-group {
+    margin-bottom: 15px;
+}
+.auth-form-group label {
+    display: block;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 5px;
+    letter-spacing: 1px;
+}
+.auth-form-group input {
+    width: 100%;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    color: white;
+    font-family: var(--font-main);
+    font-size: 1rem;
+}
+.auth-form-group input:focus {
+    border-color: var(--hud-green);
+    outline: none;
+    box-shadow: 0 0 5px var(--hud-green);
+}
+.auth-modal-buttons {
+    margin-top: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.auth-modal-footer {
+    margin-top: 15px;
+    text-align: center;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+.auth-link {
+    color: var(--hud-green);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.auth-error-msg {
+    color: var(--hud-red);
+    font-size: 0.9rem;
+    margin-top: 10px;
+    text-align: center;
+    display: none;
+}
+
